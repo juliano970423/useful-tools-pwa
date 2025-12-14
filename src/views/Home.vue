@@ -6,7 +6,18 @@
       <div class="layout-container">
         <div class="hero-section">
           <div class="hero-content">
-            <div class="hero-image" />
+            <div class="carousel-container">
+              <img
+                v-for="(image, index) in images"
+                :key="index"
+                :src="image"
+                v-show="currentIndex === index"
+                class="carousel-image"
+                alt="Hero Image"
+              />
+              <button @click="prevImage" class="carousel-button prev-button">❮</button>
+              <button @click="nextImage" class="carousel-button next-button">❯</button>
+            </div>
           </div>
         </div>
       </div>
@@ -15,8 +26,42 @@
 </template>
 
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { ref, onMounted, onUnmounted } from 'vue'
 import NavBar from '@/components/NavBar.vue'
+
+const images = ref([
+  '/public/images/Elysia.png',
+  '/public/images/Elysia1.webp',
+  '/public/images/Seele.png'
+])
+const currentIndex = ref(0)
+let carouselInterval: number | undefined
+
+const nextImage = () => {
+  currentIndex.value = (currentIndex.value + 1) % images.value.length
+}
+
+const prevImage = () => {
+  currentIndex.value = (currentIndex.value - 1 + images.value.length) % images.value.length
+}
+
+const startCarousel = () => {
+  carouselInterval = setInterval(nextImage, 5000) // Change image every 5 seconds
+}
+
+const stopCarousel = () => {
+  if (carouselInterval) {
+    clearInterval(carouselInterval)
+  }
+}
+
+onMounted(() => {
+  startCarousel()
+})
+
+onUnmounted(() => {
+  stopCarousel()
+})
 </script>
 
 <style scoped>
@@ -109,8 +154,51 @@ import NavBar from '@/components/NavBar.vue'
   overflow: hidden;
   background-color: var(--md3-surface);
   border-radius: 0.75rem; /* rounded-xl */
-  background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuAbvR7SnLyjf2CHpHTSSxE6aqXdP52HR5OCrRV_mCCUXRQYX1O212hi6NWlj8fp7uf_86gKP0AxGzc9cpnJbm5fSemnKRkrimJO9G98W9olQGlUmDU7KOOOZ0lvRwXGMn71etGLLm2bio_fPHylgGlzrRcLC7DH-Fr6VGiUEIMDE7iI5eV9g9zlLLbWAcYq_7wwWATwZbwKI08LZ3nxEJCUTda8YFrFDLtYiG5MGnU5Cx6j6C_k_kZSu2OLSOb5QeMJQZOruD4ixiqV");
 }
+
+.carousel-container {
+  position: relative;
+  width: 100%;
+  height: 70vh; /* Make the carousel take 70% of viewport height */
+  overflow: hidden;
+  border-radius: 0.75rem; /* rounded-xl */
+}
+
+.carousel-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
+  transition: opacity 0.5s ease-in-out;
+}
+
+.carousel-button {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: none;
+  padding: 1rem;
+  cursor: pointer;
+  font-size: 1.5rem;
+  z-index: 10;
+}
+
+.prev-button {
+  left: 0;
+  border-top-right-radius: 0.75rem;
+  border-bottom-right-radius: 0.75rem;
+}
+
+.next-button {
+  right: 0;
+  border-top-left-radius: 0.75rem;
+  border-bottom-left-radius: 0.75rem;
+}
+
 
 /* Material Design 3 Typography Scales */
 .display-large {
