@@ -71,7 +71,7 @@ const toggleDarkMode = () => {
   }
 };
 
-const setThemeColor = (color) => {
+const setThemeColor = (color: string) => {
   // Set the theme color based on selection using MDUI's setColorScheme function
   switch(color) {
     case 'blue':

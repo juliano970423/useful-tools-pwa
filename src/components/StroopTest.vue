@@ -150,6 +150,17 @@ const averageReactionTime = computed(() => {
 function generateStroopItem(): StroopItem {
   const textColor = colors[Math.floor(Math.random() * colors.length)]
   
+  // 防禦性檢查，確保 textColor 存在
+  if (!textColor) {
+    // 如果隨機選擇失敗，使用預設值
+    return {
+      text: '紅',
+      fontColor: '#FF0000',
+      correctAnswer: '紅',
+      isInterference: false
+    }
+  }
+  
   // 50% 概率生成干擾題（文字與顏色不符）
   const isInterference = Math.random() < 0.5
   
@@ -159,8 +170,10 @@ function generateStroopItem(): StroopItem {
   if (isInterference) {
     // 干擾題：字體顏色與文字內容不同
     const differentColors = colors.filter(c => c.name !== textColor.name)
-    const fontColorObj = differentColors[Math.floor(Math.random() * differentColors.length)]
-    fontColor = fontColorObj.color
+    const fontColorObj = differentColors.length > 0 
+      ? differentColors[Math.floor(Math.random() * differentColors.length)]
+      : colors[0]; // Fallback to colors[0] if no different colors are found
+    fontColor = fontColorObj!.color;
   } else {
     // 一致題：字體顏色與文字內容相同
     fontColor = textColor.color

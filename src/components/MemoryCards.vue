@@ -145,7 +145,7 @@ function generateCardPatterns(count: number): Array<{ pattern: string; pairId: n
     const rotation = Math.floor(Math.random() * 4) * 45
     const size = 40 + (Math.random() * 20)
     
-    const pattern = generateSVGPattern(shape, color, rotation, size)
+    const pattern = generateSVGPattern(shape!, color, rotation, size)
     
     // 每個圖案生成兩張卡片（一對）
     patterns.push({ pattern, pairId: i })
@@ -300,6 +300,13 @@ function flipCard(card: Card) {
 
 function checkMatch() {
   const [firstCard, secondCard] = flippedCards.value
+  
+  if (!firstCard || !secondCard) {
+    // 如果任一卡片未定義，重置狀態
+    flippedCards.value = []
+    isProcessing.value = false
+    return
+  }
   
   if (firstCard.pairId === secondCard.pairId) {
     // 配對成功
