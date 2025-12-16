@@ -10,9 +10,8 @@
 
       <div class="header-actions">
         <mdui-dropdown>
-          <mdui-button class="header-btn text-btn" variant="text" slot="trigger">
+          <mdui-button class="header-btn text-btn" variant="text" slot="trigger" end-icon="expand_more">
             <span class="btn-text label-large">工具</span>
-            <span class="material-symbols-outlined btn-icon">expand_more</span>
           </mdui-button>
           <mdui-menu>
             <router-link to="/calculator" style="text-decoration: none; color: inherit;">
@@ -24,24 +23,13 @@
             <mdui-menu-item>工具 3</mdui-menu-item>
           </mdui-menu>
         </mdui-dropdown>
-        <mdui-button class="header-btn" variant="icon" @click="openGitHub">
-          <span class="material-symbols-outlined">code</span>
-        </mdui-button>
-        <mdui-dropdown>
-          <mdui-button class="header-btn" variant="icon" slot="trigger">
-            <span class="material-symbols-outlined">palette</span>
-          </mdui-button>
-          <mdui-menu>
-            <mdui-menu-item @click="setThemeColor('default')">預設</mdui-menu-item>
-            <mdui-menu-item @click="setThemeColor('blue')">藍色</mdui-menu-item>
-            <mdui-menu-item @click="setThemeColor('green')">綠色</mdui-menu-item>
-            <mdui-menu-item @click="setThemeColor('purple')">紫色</mdui-menu-item>
-            <mdui-menu-item @click="setThemeColor('red')">紅色</mdui-menu-item>
-          </mdui-menu>
-        </mdui-dropdown>
-        <mdui-button class="header-btn" variant="icon" @click="toggleDarkMode">
-          <span class="material-symbols-outlined">{{ darkModeIcon }}</span>
-        </mdui-button>
+        <mdui-button-icon 
+          icon="code"
+          @click="openGitHub"
+          class="header-btn"
+        ></mdui-button-icon>
+        <DarkModeToggle />
+        <ThemeColorSelector />
       </div>
     </div>
   </header>
@@ -49,53 +37,19 @@
 
 <script setup lang="ts">
 import 'mdui/components/button.js';
+import 'mdui/components/button-icon.js';
 import 'mdui/components/dropdown.js';
 import 'mdui/components/menu.js';
 import 'mdui/components/menu-item.js';
 import { ref } from 'vue';
-import { setTheme } from 'mdui/functions/setTheme.js';
-import { setColorScheme } from 'mdui/functions/setColorScheme.js';
 import { RouterLink } from 'vue-router';
+import DarkModeToggle from './DarkModeToggle.vue';
+import ThemeColorSelector from './ThemeColorSelector.vue';
 
-const darkModeIcon = ref('light_mode'); // Default to light mode icon
-const isDarkMode = ref(false);
 
-const toggleDarkMode = () => {
-  isDarkMode.value = !isDarkMode.value;
-  if (isDarkMode.value) {
-    setTheme('dark');
-    darkModeIcon.value = 'dark_mode';
-  } else {
-    setTheme('light');
-    darkModeIcon.value = 'light_mode';
-  }
-};
-
-const setThemeColor = (color: string) => {
-  // Set the theme color based on selection using MDUI's setColorScheme function
-  switch(color) {
-    case 'blue':
-      setColorScheme('#2196F3');
-      break;
-    case 'green':
-      setColorScheme('#4CAF50');
-      break;
-    case 'purple':
-      setColorScheme('#9C27B0');
-      break;
-    case 'red':
-      setColorScheme('#F44336');
-      break;
-    case 'default':
-    default:
-      // Reset to default color
-      setColorScheme('#6750A4');
-      break;
-  }
-};
 
 const openGitHub = () => {
-  window.open('https://github.com/your-username/your-repo', '_blank');
+  window.open('https://github.com/juliano970423/useful-tools-pwa', '_blank');
 };
 </script>
 

@@ -7,14 +7,18 @@
         <div class="hero-section">
           <div class="hero-content">
             <div class="carousel-container">
-              <img
+              <div
                 v-for="(image, index) in images"
                 :key="index"
-                :src="image"
-                v-show="currentIndex === index"
-                class="carousel-image"
-                alt="Hero Image"
-              />
+                class="carousel-slide"
+                :class="{ 'active': currentIndex === index }"
+              >
+                <img
+                  :src="image"
+                  class="carousel-image"
+                  alt="Hero Image"
+                />
+              </div>
               <button @click="prevImage" class="carousel-button prev-button">❮</button>
               <button @click="nextImage" class="carousel-button next-button">❯</button>
             </div>
@@ -159,24 +163,29 @@ onUnmounted(() => {
 .carousel-container {
   position: relative;
   width: 100%;
-  height: 70vh; /* Make the carousel take 70% of viewport height */
+  height: 70vh;
   overflow: hidden;
-  border-radius: 0.75rem; /* rounded-xl */
+  border-radius: 0.75rem;
+}
+
+.carousel-slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 1s ease-in-out;
+}
+
+.carousel-slide.active {
+  opacity: 1;
 }
 
 .carousel-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  position: absolute;
-  top: 0;
-  left: 0;
-  opacity: 0; /* Start with opacity 0 */
-  transition: opacity 1s ease-in-out; /* Fade transition */
-}
-
-.carousel-image[v-show="true"] {
-  opacity: 1; /* Show current image with opacity 1 */
 }
 
 .carousel-button {

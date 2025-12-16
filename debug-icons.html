@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/mdui@2/mdui.css" />
+    <script src="https://unpkg.com/mdui@2/mdui.global.js"></script>
+    <style>
+        body { 
+            padding: 20px; 
+            font-family: Arial, sans-serif;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+        .icon-test {
+            margin: 10px;
+            font-size: 24px;
+        }
+    </style>
+</head>
+<body>
+    <h1>MDUI 图标测试</h1>
+    
+    <div class="test-section">
+        <h3>1. mdui-button-icon 测试 (filled)</h3>
+        <mdui-button-icon icon="home" class="icon-test"></mdui-button-icon>
+        <mdui-button-icon icon="search" class="icon-test"></mdui-button-icon>
+        <mdui-button-icon icon="settings" class="icon-test"></mdui-button-icon>
+    </div>
+    
+    <div class="test-section">
+        <h3>2. mdui-button-icon 测试 (outlined)</h3>
+        <mdui-button-icon icon="home--outlined" class="icon-test"></mdui-button-icon>
+        <mdui-button-icon icon="search--outlined" class="icon-test"></mdui-button-icon>
+        <mdui-button-icon icon="settings--outlined" class="icon-test"></mdui-button-icon>
+    </div>
+    
+    <div class="test-section">
+        <h3>3. mdui-icon 测试 (filled)</h3>
+        <mdui-icon name="home" class="icon-test"></mdui-icon>
+        <mdui-icon name="search" class="icon-test"></mdui-icon>
+        <mdui-icon name="settings" class="icon-test"></mdui-icon>
+    </div>
+    
+    <div class="test-section">
+        <h3>4. mdui-icon 测试 (outlined)</h3>
+        <mdui-icon name="home--outlined" class="icon-test"></mdui-icon>
+        <mdui-icon name="search--outlined" class="icon-test"></mdui-icon>
+        <mdui-icon name="settings--outlined" class="icon-test"></mdui-icon>
+    </div>
+    
+    <div class="test-section">
+        <h3>5. 原生 Material Symbols</h3>
+        <span class="material-symbols-outlined icon-test">home</span>
+        <span class="material-symbols-outlined icon-test">search</span>
+        <span class="material-symbols-outlined icon-test">settings</span>
+    </div>
+    
+    <div class="test-section">
+        <h3>6. 原生 Material Icons</h3>
+        <span class="material-icons icon-test">home</span>
+        <span class="material-icons icon-test">search</span>
+        <span class="material-icons icon-test">settings</span>
+    </div>
+    
+    <div class="test-section">
+        <h3>7. 原生 Material Icons Outlined</h3>
+        <span class="material-icons-outlined icon-test">home</span>
+        <span class="material-icons-outlined icon-test">search</span>
+        <span class="material-icons-outlined icon-test">settings</span>
+    </div>
+    
+    <div class="test-section">
+        <h3>当前使用的图标测试</h3>
+        <mdui-button-icon icon="light_mode" class="icon-test"></mdui-button-icon>
+        <mdui-button-icon icon="dark_mode" class="icon-test"></mdui-button-icon>
+        <mdui-button-icon icon="color_lens" class="icon-test"></mdui-button-icon>
+        <mdui-button-icon icon="code" class="icon-test"></mdui-button-icon>
+        <mdui-button-icon icon="expand_more" class="icon-test"></mdui-button-icon>
+    </div>
+</body>
+</html>
