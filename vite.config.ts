@@ -47,6 +47,10 @@ export default defineConfig({
       }
     })
   ],
+  server: {
+    host: '0.0.0.0', // 這會監聽所有來源，包括 localhost 和 127.0.0.1
+    port: 5173      // 確保這是你原本使用的 port
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))

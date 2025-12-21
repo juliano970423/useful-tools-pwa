@@ -3,6 +3,7 @@ import App from './App.vue'
 import router from './router'
 // 导入MDUI CSS和组件
 import 'mdui/mdui.css';
+import 'mdui';
 
 const app = createApp(App)
 

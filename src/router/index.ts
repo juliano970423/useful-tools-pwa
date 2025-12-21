@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Home from '@/views/Home.vue'
 import Calculator from '@/views/Calculator.vue'
+import EnglishTraining from '@/views/EnglishTraining.vue'
 import FocusTraining from '@/views/FocusTraining.vue'
 import StroopTestPage from '@/views/StroopTestPage.vue'
 import MemoryCardsPage from '@/views/MemoryCardsPage.vue'
@@ -38,6 +39,23 @@ const router = createRouter({
       path: '/focus-training/timer-debug',
       name: 'timer-debug',
       component: TimerDebugPage
+    },
+    {
+      path: '/english-training',
+      name: 'english-training',
+      component: EnglishTraining,
+      children: [
+        {
+          path: 'practice',
+          name: 'english-practice',
+          component: () => import('@/components/EnglishPractice.vue')
+        },
+        {
+          path: 'history',
+          name: 'english-history',
+          component: () => import('@/views/EnglishTraining.vue') // 重用入口頁面顯示歷史
+        }
+      ]
     }
   ]
 })
