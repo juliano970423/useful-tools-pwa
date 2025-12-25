@@ -118,6 +118,52 @@
           </mdui-card>
         </div>
 
+        <!-- API Key Management -->
+        <div style="margin: 32px 0; padding: 24px; border-radius: 12px; background-color: var(--mdui-color-surface-variant);">
+          <h3 style="margin: 0 0 16px 0; text-align: center; color: var(--mdui-color-primary);">API 設定</h3>
+
+          <div v-if="!isApiKeyInputVisible" style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
+            <p style="margin: 0; font-size: 16px; color: var(--mdui-color-on-surface-variant); text-align: center;">
+              <span v-if="apiKey">已設定 API Key</span>
+              <span v-else>未設定 API Key (使用匿名服務)</span>
+            </p>
+            <mdui-button
+              variant="outlined"
+              @click="isApiKeyInputVisible = true"
+              :icon="apiKey ? 'edit' : 'key'"
+              size="large"
+            >
+              {{ apiKey ? '編輯 API Key' : '設定 API Key' }}
+            </mdui-button>
+          </div>
+
+          <div v-else style="display: flex; flex-direction: column; align-items: center; gap: 16px; max-width: 400px; margin: 0 auto;">
+            <mdui-text-field
+              v-model="apiKey"
+              label="Enter your API Key"
+              type="password"
+              placeholder="sk-..."
+              full-width
+            ></mdui-text-field>
+            <div style="display: flex; gap: 12px; width: 100%;">
+              <mdui-button
+                variant="outlined"
+                @click="isApiKeyInputVisible = false; apiKey = localStorage.getItem('englishPracticeApiKey') ? decryptApiKey(localStorage.getItem('englishPracticeApiKey') || '') : ''"
+                full-width
+              >
+                取消
+              </mdui-button>
+              <mdui-button
+                variant="filled"
+                @click="saveApiKey"
+                full-width
+              >
+                儲存
+              </mdui-button>
+            </div>
+          </div>
+        </div>
+
         <div style="text-align: center; margin-top: 32px;">
           <mdui-button
             variant="filled"
@@ -163,6 +209,60 @@ const isHistoryRoute = computed(() => route.path === '/english-training/history'
 const isMainEnglishRoute = computed(() => {
   return route.path === '/english-training' || route.path === '/english-training/';
 });
+
+// API key management
+const apiKey = ref('')
+const isApiKeyInputVisible = ref(false)
+
+// 加密/解密函數
+const encryptApiKey = (key: string): string => {
+  // 簡單的加密實現，實際應用中應使用更安全的加密方法
+  const encoder = new TextEncoder();
+  const data = encoder.encode(key);
+  const encrypted = Array.from(data).map(byte => byte ^ 42).join(',');
+  return btoa(encrypted);
+}
+
+const decryptApiKey = (encryptedKey: string): string => {
+  // 簡單的解密實現，實際應用中應使用更安全的加密方法
+  try {
+    const encryptedData = atob(encryptedKey);
+    const dataArray = encryptedData.split(',').map(item => parseInt(item));
+    const decrypted = new Uint8Array(dataArray.map(byte => byte ^ 42));
+    const decoder = new TextDecoder();
+    return decoder.decode(decrypted);
+  } catch (error) {
+    console.error('Error decrypting API key:', error);
+    return '';
+  }
+}
+
+// Load API key from localStorage on component mount
+onMounted(() => {
+  const storedEncryptedApiKey = localStorage.getItem('englishPracticeApiKey')
+  if (storedEncryptedApiKey) {
+    try {
+      const decryptedApiKey = decryptApiKey(storedEncryptedApiKey)
+      apiKey.value = decryptedApiKey
+    } catch (error) {
+      console.error('Error loading API key:', error)
+    }
+  }
+})
+
+// Save API key to localStorage
+const saveApiKey = () => {
+  if (apiKey.value.trim()) {
+    // 加密後儲存到 localStorage
+    const encryptedKey = encryptApiKey(apiKey.value);
+    localStorage.setItem('englishPracticeApiKey', encryptedKey)
+    alert('API Key saved successfully!')
+  } else {
+    localStorage.removeItem('englishPracticeApiKey')
+    alert('API Key removed.')
+  }
+  isApiKeyInputVisible.value = false
+}
 
 // 歷史記錄相關狀態
 const completedQuestionsCount = ref(0)

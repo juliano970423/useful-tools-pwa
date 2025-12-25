@@ -1,25 +1,5 @@
 <template>
   <div>
-    <!-- 模式選擇 -->
-    <div v-if="!currentQuestion && !showLevelSelector" style="text-align: center; padding: 32px 16px;">
-      <h1 style="margin-bottom: 16px;">選擇學習方式</h1>
-      <p style="margin-bottom: 32px; color: var(--mdui-color-on-surface-variant);">
-        從6000單詞庫中精選詞彙，AI為你量身定制題目
-      </p>
-      
-      <div style="display: flex; flex-direction: column; gap: 16px; max-width: 400px; margin: 0 auto;">
-        <mdui-button
-          variant="filled"
-          @click="showLevelSelector = true"
-          icon="auto_awesome"
-          full-width
-          size="large"
-        >
-          開始AI智能練習
-        </mdui-button>
-      </div>
-    </div>
-
     <!-- 難度選擇 -->
     <LevelSelector
       v-if="!currentQuestion && showLevelSelector"
@@ -34,8 +14,8 @@
       </p>
       <mdui-linear-progress indeterminate></mdui-linear-progress>
       <br>
-      <mdui-button 
-        variant="text" 
+      <mdui-button
+        variant="text"
         @click="backToModeSelection"
         full-width
       >
@@ -67,7 +47,9 @@
             <span v-for="(part, index) in sentenceParts" :key="index"
                   :class="{'blank-placeholder': part.type === 'blank', 'hover-word': part.type === 'word' && showAnswer}"
                   @mouseenter="part.type === 'word' && showAnswer ? showOptionWordInfo(part.text, $event) : null"
-                  @mouseleave="part.type === 'word' && showAnswer ? hideWordInfo() : null">
+                  @mouseleave="part.type === 'word' && showAnswer ? hideWordInfo() : null"
+                  @click="part.type === 'word' && showAnswer ? showOptionWordInfo(part.text, $event) : null"
+                  @touchstart="part.type === 'word' && showAnswer ? showOptionWordInfo(part.text, $event) : null">
               <span v-if="part.type === 'text'">{{ part.text }}</span>
               <strong v-else-if="part.type === 'blank'" style="color: var(--mdui-color-primary); text-decoration: underline;">{{ part.text }}</strong>
               <span v-else>{{ part.text }}</span>
@@ -80,9 +62,10 @@
             v-for="(option, index) in currentQuestion.options"
             :key="index"
             variant="outlined"
-            @click="selectAnswer(option)"
+            @click="showAnswer ? showOptionWordInfo(option, $event) : selectAnswer(option)"
             @mouseenter="showAnswer ? showOptionWordInfo(option, $event) : null"
             @mouseleave="showAnswer ? hideWordInfo() : null"
+            @touchstart="showAnswer ? showOptionWordInfo(option, $event) : null"
             :class="{
               'correct': showAnswer && option === currentQuestion.correctAnswer,
               'incorrect': showAnswer && option !== currentQuestion.correctAnswer && selectedAnswer === option
@@ -189,6 +172,16 @@
         </mdui-button>
 
         <mdui-button
+          variant="tonal"
+          @click="startNewLevel"
+          full-width
+          size="large"
+          icon="grading"
+        >
+          更換難度
+        </mdui-button>
+
+        <mdui-button
           variant="outlined"
           @click="$router.push('/english-training/history')"
           full-width
@@ -248,6 +241,200 @@ import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import LevelSelector from './LevelSelector.vue'
 import { loadWordData, type WordData } from '@/services/wordService'
+
+// API key management
+const apiKey = ref('')
+const isApiKeyInputVisible = ref(false)
+
+// 加密/解密函數
+const encryptApiKey = (key: string): string => {
+  // 簡單的加密實現，實際應用中應使用更安全的加密方法
+  const encoder = new TextEncoder();
+  const data = encoder.encode(key);
+  const encrypted = Array.from(data).map(byte => byte ^ 42).join(',');
+  return btoa(encrypted);
+}
+
+const decryptApiKey = (encryptedKey: string): string => {
+  // 簡單的解密實現，實際應用中應使用更安全的加密方法
+  try {
+    const encryptedData = atob(encryptedKey);
+    const dataArray = encryptedData.split(',').map(item => parseInt(item));
+    const decrypted = new Uint8Array(dataArray.map(byte => byte ^ 42));
+    const decoder = new TextDecoder();
+    return decoder.decode(decrypted);
+  } catch (error) {
+    console.error('Error decrypting API key:', error);
+    return '';
+  }
+}
+
+// Load API key from localStorage on component mount
+onMounted(() => {
+  const storedEncryptedApiKey = localStorage.getItem('englishPracticeApiKey')
+  if (storedEncryptedApiKey) {
+    try {
+      const decryptedApiKey = decryptApiKey(storedEncryptedApiKey)
+      apiKey.value = decryptedApiKey
+    } catch (error) {
+      console.error('Error loading API key:', error)
+    }
+  }
+})
+
+// Save API key to localStorage
+const saveApiKey = () => {
+  if (apiKey.value.trim()) {
+    // 加密後儲存到 localStorage
+    const encryptedKey = encryptApiKey(apiKey.value);
+    localStorage.setItem('englishPracticeApiKey', encryptedKey)
+    alert('API Key saved successfully!')
+  } else {
+    localStorage.removeItem('englishPracticeApiKey')
+    alert('API Key removed.')
+  }
+  isApiKeyInputVisible.value = false
+}
+
+// Parse a CSV line, handling quoted fields properly
+const parseCSVLine = (line: string): string[] => {
+  // 使用更強大的CSV解析，處理各種複雜情況
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  let i = 0;
+
+  while (i < line.length) {
+    const char = line[i];
+
+    if (char === '"') {
+      if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
+        // Double quotes inside quoted field represent a single quote
+        current += '"';
+        i += 2; // Skip both quotes
+      } else {
+        // Toggle quote state
+        inQuotes = !inQuotes;
+        i++;
+      }
+    } else if (char === ',' && !inQuotes) {
+      // End of field
+      result.push(current.trim());
+      current = '';
+      i++;
+    } else {
+      current += char;
+      i++;
+    }
+  }
+
+  // Add the last field
+  result.push(current.trim());
+
+  return result;
+}
+
+// 更強大的CSV解析函數，處理複雜情況
+const parseCSVAdvanced = (text: string): string[][] => {
+  const lines = text.split(/\r?\n/);
+  const result: string[][] = [];
+
+  for (const line of lines) {
+    if (line.trim() === '') continue;
+
+    // 檢查是否為CSV標題行，跳過它
+    if (line.includes('"句子", "答案"') || line.includes('句子,答案')) {
+      continue;
+    }
+
+    // 使用更強大的解析邏輯
+    const row = parseCSVLine(line);
+    if (row.length >= 2) {
+      result.push(row);
+    }
+  }
+
+  return result;
+}
+
+// Function to make API calls with or without API key
+const makeApiCall = async (data: any) => {
+  const storedEncryptedApiKey = localStorage.getItem('englishPracticeApiKey')
+
+  if (storedEncryptedApiKey) {
+    try {
+      const decryptedApiKey = decryptApiKey(storedEncryptedApiKey)
+      if (decryptedApiKey) {
+        // Use authenticated API with decrypted key
+        return await axios.post('https://gen.pollinations.ai/v1/chat/completions', data, {
+          headers: {
+            'Authorization': `Bearer ${decryptedApiKey}`,
+            'Content-Type': 'application/json'
+          }
+        })
+      }
+    } catch (error) {
+      console.error('Error using stored API key:', error)
+    }
+  }
+
+  // Use anonymous API if no valid key is available
+  // Convert POST data to GET parameters for anonymous API
+  const message = data.messages?.[data.messages.length - 1]?.content || 'Hello';
+  let model = data.model || 'openai-fast';
+  // Ensure the model name is in the correct format for the API
+  if (model === 'nova micro' || model === 'openai') {
+    model = 'nova-micro';
+  }
+
+  // For anonymous API, we need to return a response object that matches the authenticated API response format
+  try {
+    // Try the new endpoint format as you specified: https://gen.pollinations.ai/text/{prompt}?model=nova-micro
+    // However, putting the prompt in the URL path can cause issues with special characters
+    // So we'll use the query parameter approach which is safer
+    const response = await axios.get(`https://gen.pollinations.ai/text?prompt=${encodeURIComponent(message)}&model=${model}`);
+
+    // Transform the response to match the format expected by the rest of the code
+    return {
+      data: {
+        choices: [{
+          message: {
+            content: response.data
+          }
+        }]
+      }
+    }
+  } catch (error) {
+    console.error('New anonymous API call failed:', error);
+    // If the new endpoint fails, try the original working endpoint as fallback
+    try {
+      const response = await axios.post('https://text.pollinations.ai/openai', {
+        messages: [
+          {
+            role: 'user',
+            content: message
+          }
+        ],
+        model: model.replace('nova-micro', 'nova micro'), // Convert back for the old API
+        max_tokens: 4000
+      });
+
+      // Transform the response to match the format expected by the rest of the code
+      return {
+        data: {
+          choices: [{
+            message: {
+              content: response.data.choices[0].message.content
+            }
+          }]
+        }
+      }
+    } catch (fallbackError) {
+      console.error('Fallback anonymous API call also failed:', fallbackError);
+      throw fallbackError;
+    }
+  }
+}
 
 interface Question {
   sentence: string
@@ -345,6 +532,13 @@ const backToModeSelection = () => {
 
 // 無限模式：從本地單詞庫隨機選詞生成題目
 const startInfiniteMode = async (level: number) => {
+  // 清除之前可能存在的問題，確保使用新選擇的級別
+  questions.value = [];
+  localStorage.removeItem('englishQuestions');
+  localStorage.removeItem('questionsTimestamp');
+  localStorage.removeItem('questionSource');
+  localStorage.removeItem('questionLevel');
+  localStorage.removeItem('wrongAnswers');
   await generateLocalQuestions(level);
   currentLevel.value = level; // 存儲當前級別，用於後續動態加載
 }
@@ -411,7 +605,7 @@ const generateAIQuestionsFromWords = async (words: WordData[]): Promise<Question
     example2: w.example2
   }))
   
-  const prompt = `Based on these ${words.length} English words, generate ${words.length} fill-in-the-blank sentences in JSON format:
+  const prompt = `Based on these ${words.length} English words, generate ${words.length} fill-in-the-blank sentences in CSV format:
 
 Words: ${wordList.map(w => w.word).join(', ')}
 
@@ -422,72 +616,64 @@ Requirements:
 4. Do not generate options, definitions, etymology, or example sentences - these will be retrieved separately
 5. Make sentences natural and contextual
 6. Focus on academic vocabulary usage
-7. Return ONLY the JSON format with no additional text or explanation:
-{
-  "questions": [
-    {
-      "sentence": "The scientist's ____ was crucial to the experiment's success.",
-      "correctAnswer": "hypothesis"
-    }
-  ]
-}
+7. Return ONLY the CSV format with no additional text or explanation:
+"句子", "答案"
+"句子", "答案"
+"句子", "答案"
 
 Generate exactly ${words.length} sentences, one for each word provided.`
 
-  const response = await axios.post('https://text.pollinations.ai/openai', {
+  const response = await makeApiCall({
     messages: [
       {
         role: 'user',
         content: prompt
       }
     ],
-    model: 'openai',
+    model: 'nova-micro',
     max_tokens: 4000
   })
 
   const generatedText = response.data.choices[0].message.content
-  
-  // 清理和解析JSON響應
+
+  // 清理和解析CSV響應
   let cleanedText = generatedText.trim()
-  
-  if (cleanedText.startsWith('```json')) {
-    cleanedText = cleanedText.replace(/```json\n?/, '').replace(/```\n?/, '')
-  } else if (cleanedText.startsWith('```')) {
+
+  // 如果響應包含代碼塊標記，移除它們
+  if (cleanedText.startsWith('```')) {
     cleanedText = cleanedText.replace(/```\n?/, '').replace(/```\n?/, '')
   }
 
-  // 尝试从响应中提取JSON部分（以防AI输出了额外文本）
-  let jsonData = cleanedText;
+  // 使用更強大的CSV解析方法
+  const csvRows = parseCSVAdvanced(cleanedText);
+  const questionsData: { sentence: string; correctAnswer: string }[] = [];
 
-  // 查找JSON对象的开始和结束
-  const jsonStart = cleanedText.indexOf('{');
-  const jsonEnd = cleanedText.lastIndexOf('}');
+  for (const row of csvRows) {
+    if (row.length >= 2) {
+      let sentence = row[0];
+      let answer = row[1];
 
-  if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-    jsonData = cleanedText.substring(jsonStart, jsonEnd + 1);
-  }
+      // 去除句子和答案兩端的引號
+      if (sentence.startsWith('"') && sentence.endsWith('"')) {
+        sentence = sentence.slice(1, -1);
+      }
+      if (answer.startsWith('"') && answer.endsWith('"')) {
+        answer = answer.slice(1, -1);
+      }
 
-  let data;
-  try {
-    data = JSON.parse(jsonData);
-  } catch (parseError) {
-    console.error('JSON解析失敗:', parseError);
-    console.log('嘗試解析的文本:', jsonData);
+      // 去除可能的多餘空格
+      sentence = sentence.trim();
+      answer = answer.trim();
 
-    // 如果直接解析失敗，嘗試查找和提取JSON對象
-    const jsonRegex = /({.*})/s;
-    const match = cleanedText.match(jsonRegex);
-
-    if (match) {
-      data = JSON.parse(match[1]);
-    } else {
-      throw new Error('無法從AI響應中解析JSON數據');
+      if (sentence && answer) {
+        questionsData.push({ sentence, correctAnswer: answer });
+      }
     }
   }
 
-  if (data.questions && Array.isArray(data.questions)) {
+  if (questionsData.length > 0) {
     // 由于AI只生成句子和正确答案，我们需要从词库中获取单词信息和生成选项
-    const basicQuestions = await Promise.all(data.questions.map(async (q: any) => {
+    const basicQuestions = await Promise.all(questionsData.map(async (q) => {
       // 从词库中查找单词的详细信息
       let wordInfo = {
         definition: '無資料',
@@ -524,7 +710,9 @@ Generate exactly ${words.length} sentences, one for each word provided.`
 
     return questionsWithOptions;
   } else {
-    throw new Error('Invalid AI response format')
+    console.error('問題解析失敗，CSV數據:', questionsData);
+    console.error('原始AI響應:', generatedText);
+    throw new Error('Invalid CSV response format')
   }
 }
 
@@ -612,7 +800,7 @@ const generateAIPQuestions = async () => {
       chineseMeaning: w.chineseMeaning
     }));
 
-    const prompt = `Based on these ${selectedWords.length} English words, generate ${selectedWords.length} fill-in-the-blank sentences in JSON format:
+    const prompt = `Based on these ${selectedWords.length} English words, generate ${selectedWords.length} fill-in-the-blank sentences in CSV format:
 
 Words: ${selectedWords.map(w => w.word).join(', ')}
 
@@ -623,73 +811,64 @@ Requirements:
 4. Do not generate options, definitions, etymology, or example sentences - these will be retrieved separately
 5. Make sentences natural and contextual
 6. Focus on academic vocabulary usage
-7. Return ONLY the JSON format with no additional text or explanation:
-{
-  "questions": [
-    {
-      "sentence": "The scientist's ____ was crucial to the experiment's success.",
-      "correctAnswer": "hypothesis"
-    }
-  ]
-}
+7. Return ONLY the CSV format with no additional text or explanation:
+"句子", "答案"
+"句子", "答案"
+"句子", "答案"
 
 Generate exactly ${selectedWords.length} sentences, one for each word provided.`
 
-    const response = await axios.post('https://text.pollinations.ai/openai', {
+    const response = await makeApiCall({
       messages: [
         {
           role: 'user',
           content: prompt
         }
       ],
-      model: 'openai',
+      model: 'nova-micro',
       max_tokens: 4000
     })
 
     const generatedText = response.data.choices[0].message.content
 
-    // 清理和解析JSON響應
+    // 清理和解析CSV響應
     let cleanedText = generatedText.trim()
 
     // 如果響應包含代碼塊標記，移除它們
-    if (cleanedText.startsWith('```json')) {
-      cleanedText = cleanedText.replace(/```json\n?/, '').replace(/```\n?/, '')
-    } else if (cleanedText.startsWith('```')) {
+    if (cleanedText.startsWith('```')) {
       cleanedText = cleanedText.replace(/```\n?/, '').replace(/```\n?/, '')
     }
 
-    // 尝试从响应中提取JSON部分（以防AI输出了额外文本）
-    let jsonData = cleanedText;
+    // 使用更強大的CSV解析方法
+    const csvRows = parseCSVAdvanced(cleanedText);
+    const questionsData: { sentence: string; correctAnswer: string }[] = [];
 
-    // 查找JSON对象的开始和结束
-    const jsonStart = cleanedText.indexOf('{');
-    const jsonEnd = cleanedText.lastIndexOf('}');
+    for (const row of csvRows) {
+      if (row.length >= 2) {
+        let sentence = row[0];
+        let answer = row[1];
 
-    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-      jsonData = cleanedText.substring(jsonStart, jsonEnd + 1);
-    }
+        // 去除句子和答案兩端的引號
+        if (sentence.startsWith('"') && sentence.endsWith('"')) {
+          sentence = sentence.slice(1, -1);
+        }
+        if (answer.startsWith('"') && answer.endsWith('"')) {
+          answer = answer.slice(1, -1);
+        }
 
-    let data;
-    try {
-      data = JSON.parse(jsonData);
-    } catch (parseError) {
-      console.error('JSON解析失敗:', parseError);
-      console.log('嘗試解析的文本:', jsonData);
+        // 去除可能的多餘空格
+        sentence = sentence.trim();
+        answer = answer.trim();
 
-      // 如果直接解析失敗，嘗試查找和提取JSON對象
-      const jsonRegex = /({.*})/s;
-      const match = cleanedText.match(jsonRegex);
-
-      if (match) {
-        data = JSON.parse(match[1]);
-      } else {
-        throw new Error('無法從AI響應中解析JSON數據');
+        if (sentence && answer) {
+          questionsData.push({ sentence, correctAnswer: answer });
+        }
       }
     }
 
-    if (data.questions && Array.isArray(data.questions)) {
+    if (questionsData.length > 0) {
       // 由于AI只生成句子和正确答案，我们需要从词库中获取单词信息和生成选项
-      const basicQuestions = await Promise.all(data.questions.slice(0, 50).map(async (q: any) => {
+      const basicQuestions = await Promise.all(questionsData.slice(0, 50).map(async (q) => {
         // 从词库中查找单词的详细信息
         let wordInfo = {
           definition: '無資料',
@@ -697,9 +876,9 @@ Generate exactly ${selectedWords.length} sentences, one for each word provided.`
           example: '無資料'
         };
 
-        // 遍历所有级别查找单词信息
-        for (let level = 1; level <= 6; level++) {
-          const words = await loadWordData(level);
+        // 只在當前級別查找單詞資訊
+        if (currentLevel.value) {
+          const words = await loadWordData(currentLevel.value);
           const wordData = words.find((w: WordData) => w.word.toLowerCase() === q.correctAnswer.toLowerCase());
 
           if (wordData) {
@@ -708,7 +887,36 @@ Generate exactly ${selectedWords.length} sentences, one for each word provided.`
               etymology: wordData.root || '無資料',
               example: wordData.example1 || wordData.example2 || '無資料'
             };
-            break;
+          } else {
+            // 如果在當前級別找不到，再遍歷所有級別作為備用
+            for (let level = 1; level <= 6; level++) {
+              const words = await loadWordData(level);
+              const wordData = words.find((w: WordData) => w.word.toLowerCase() === q.correctAnswer.toLowerCase());
+
+              if (wordData) {
+                wordInfo = {
+                  definition: wordData.chineseMeaning || '無資料',
+                  etymology: wordData.root || '無資料',
+                  example: wordData.example1 || wordData.example2 || '無資料'
+                };
+                break;
+              }
+            }
+          }
+        } else {
+          // 如果沒有指定級別，遍歷所有級別
+          for (let level = 1; level <= 6; level++) {
+            const words = await loadWordData(level);
+            const wordData = words.find((w: WordData) => w.word.toLowerCase() === q.correctAnswer.toLowerCase());
+
+            if (wordData) {
+              wordInfo = {
+                definition: wordData.chineseMeaning || '無資料',
+                etymology: wordData.root || '無資料',
+                example: wordData.example1 || wordData.example2 || '無資料'
+              };
+              break;
+            }
           }
         }
 
@@ -720,7 +928,7 @@ Generate exactly ${selectedWords.length} sentences, one for each word provided.`
       }));
 
       // 为每个问题生成选项
-      const questionsWithOptions = await addOptionsToQuestions(basicQuestions, null);
+      const questionsWithOptions = await addOptionsToQuestions(basicQuestions, currentLevel.value);
 
       questions.value = questionsWithOptions;
 
@@ -736,7 +944,9 @@ Generate exactly ${selectedWords.length} sentences, one for each word provided.`
       showAIGenerator.value = false
       startQuiz()
     } else {
-      throw new Error('Invalid response format')
+      console.error('問題解析失敗，CSV數據:', questionsData);
+      console.error('原始AI響應:', generatedText);
+      throw new Error('Invalid CSV response format')
     }
 
   } catch (error) {
@@ -744,7 +954,7 @@ Generate exactly ${selectedWords.length} sentences, one for each word provided.`
 
     // 如果API調用失敗，使用備用題目
     const basicBackupQuestions = getBackupQuestions();
-    const backupQuestionsWithOptions = await addOptionsToQuestions(basicBackupQuestions, null);
+    const backupQuestionsWithOptions = await addOptionsToQuestions(basicBackupQuestions, currentLevel.value);
     questions.value = backupQuestionsWithOptions;
     showAIGenerator.value = false
     startQuiz()
@@ -834,13 +1044,15 @@ const sentenceParts = computed<SentencePart[]>(() => {
   if (!currentQuestion.value) return []
 
   // 根據是否已顯示答案來決定句子內容
-  const sentence = showAnswer.value ?
-    currentQuestion.value.sentence.replace('____', currentQuestion.value.correctAnswer) :
-    currentQuestion.value.sentence;
+  let sentence = currentQuestion.value.sentence;
+  if (showAnswer.value) {
+    // 確保只替換第一個空白占位符
+    sentence = sentence.replace('____', currentQuestion.value.correctAnswer);
+  }
 
   const parts: SentencePart[] = [];
 
-  // 分割句子中的空格和單詞，但保留空格和標點
+  // 使用更安全的正則表達式來分割句子
   const regex = /(____)|([a-zA-Z]+(?:'[a-zA-Z]+)?)/g;
   let lastIndex = 0;
 
@@ -849,7 +1061,7 @@ const sentenceParts = computed<SentencePart[]>(() => {
     // 添加匹配前的文本（包括空格和標點）
     if (match.index > lastIndex) {
       const textBefore = sentence.substring(lastIndex, match.index);
-      if (textBefore) {
+      if (textBefore.trim() !== '') {
         parts.push({ type: 'text', text: textBefore });
       }
     }
@@ -867,7 +1079,7 @@ const sentenceParts = computed<SentencePart[]>(() => {
   // 添加最後剩餘的文本（包括空格和標點）
   if (lastIndex < sentence.length) {
     const remainingText = sentence.substring(lastIndex);
-    if (remainingText) {
+    if (remainingText.trim() !== '') {
       parts.push({ type: 'text', text: remainingText });
     }
   }
@@ -988,6 +1200,20 @@ const restart = () => {
   wrongAnswers.value = []
 }
 
+// 開始新練習並選擇級別
+const startNewLevel = () => {
+  // 清除當前練習的狀態
+  questions.value = []
+  currentQuestionIndex.value = 0
+  currentQuestion.value = null
+  showResult.value = false
+  showWrongReview.value = false
+  correctCount.value = 0
+  wrongAnswers.value = []
+  // 顯示級別選擇器
+  showLevelSelector.value = true
+}
+
 // 顯示錯題
 const showWrongAnswers = () => {
   showWrongReview.value = true
@@ -1015,8 +1241,20 @@ const showWordInfo = (word: string, event: MouseEvent) => {
 }
 
 // 顯示句子中的單詞信息
-const showSentenceWordInfo = (word: string, event: MouseEvent) => {
+const showSentenceWordInfo = (word: string, event: MouseEvent | TouchEvent) => {
   if (!currentQuestion.value || !showAnswer.value) return
+
+  // 獲取坐標，支持鼠標和觸摸事件
+  let clientX, clientY;
+  if ('touches' in event) {
+    // 觸摸事件
+    clientX = event.touches[0].clientX;
+    clientY = event.touches[0].clientY;
+  } else {
+    // 鼠標事件
+    clientX = event.clientX;
+    clientY = event.clientY;
+  }
 
   // 確保只有在完成答案後才能顯示詞彙資訊
   wordInfo.value = {
@@ -1025,8 +1263,8 @@ const showSentenceWordInfo = (word: string, event: MouseEvent) => {
     etymology: currentQuestion.value.wordInfo.etymology,
     example: currentQuestion.value.wordInfo.example,
     show: true,
-    x: event.clientX,
-    y: event.clientY - 100
+    x: clientX,
+    y: clientY - 100
   }
 }
 
@@ -1271,8 +1509,20 @@ const findWordByInflection = (word: string, words: WordData[]): WordData | undef
 };
 
 // 顯示選項單詞信息
-const showOptionWordInfo = async (word: string, event: MouseEvent) => {
+const showOptionWordInfo = async (word: string, event: MouseEvent | TouchEvent) => {
   if (!currentQuestion.value || !showAnswer.value) return
+
+  // 獲取坐標，支持鼠標和觸摸事件
+  let clientX, clientY;
+  if ('touches' in event) {
+    // 觸摸事件
+    clientX = event.touches[0].clientX;
+    clientY = event.touches[0].clientY;
+  } else {
+    // 鼠標事件
+    clientX = event.clientX;
+    clientY = event.clientY;
+  }
 
   try {
     // 統一從詞庫中查找該單字的資訊，不論是否為正確答案
@@ -1289,8 +1539,8 @@ const showOptionWordInfo = async (word: string, event: MouseEvent) => {
           etymology: foundWord.root || '無資料',
           example: foundWord.example1 || foundWord.example2 || '無資料',
           show: true,
-          x: event.clientX,
-          y: event.clientY - 100
+          x: clientX,
+          y: clientY - 100
         };
         return;
       }
@@ -1303,8 +1553,8 @@ const showOptionWordInfo = async (word: string, event: MouseEvent) => {
       etymology: '無資料',
       example: '無資料',
       show: true,
-      x: event.clientX,
-      y: event.clientY - 100
+      x: clientX,
+      y: clientY - 100
     };
   } catch (error) {
     console.error('加載單詞資訊失敗:', error);
@@ -1314,8 +1564,8 @@ const showOptionWordInfo = async (word: string, event: MouseEvent) => {
       etymology: '無資料',
       example: '無資料',
       show: true,
-      x: event.clientX,
-      y: event.clientY - 100
+      x: clientX,
+      y: clientY - 100
     };
   }
 }
@@ -1327,59 +1577,83 @@ const hideWordInfo = () => {
 
 // 為問題添加選項（從詞庫中隨機選擇）
 const addOptionsToQuestions = async (basicQuestions: Omit<Question, 'options'>[], level: number | null) => {
-  // 如果指定了級別，從該級別詞庫中選擇選項；否則嘗試載入所有級別
-  let allWords: WordData[] = [];
+  try {
+    // 如果指定了級別，從該級別詞庫中選擇選項；否則嘗試載入所有級別
+    let allWords: WordData[] = [];
 
-  if (level !== null) {
-    allWords = await loadWordData(level);
-  } else {
-    // 如果沒有指定級別，載入所有級別的詞彙
-    for (let lvl = 1; lvl <= 6; lvl++) {
-      const words = await loadWordData(lvl);
-      allWords = [...allWords, ...words];
+    if (level !== null) {
+      allWords = await loadWordData(level);
+    } else {
+      // 如果沒有指定級別，載入所有級別的詞彙
+      for (let lvl = 1; lvl <= 6; lvl++) {
+        const words = await loadWordData(lvl);
+        allWords = [...allWords, ...words];
+      }
     }
-  }
 
-  // 為每個問題生成選項
-  return basicQuestions.map((q) => {
-    // 找到與正確答案相同詞性的詞彙作為干擾選項
-    const correctWordData = allWords.find(w => w.word.toLowerCase() === q.correctAnswer.toLowerCase());
-    const samePosWords = correctWordData
-      ? allWords.filter(w =>
+    // 為每個問題生成選項
+    return basicQuestions.map((q) => {
+      // 找到與正確答案相同詞性的詞彙作為干擾選項
+      const correctWordData = allWords.find(w => w.word.toLowerCase() === q.correctAnswer.toLowerCase());
+      let samePosWords = [];
+
+      if (correctWordData) {
+        // 優先使用相同詞性的詞彙
+        samePosWords = allWords.filter(w =>
           w.partOfSpeech === correctWordData.partOfSpeech &&
           w.word.toLowerCase() !== q.correctAnswer.toLowerCase()
-        )
-      : allWords.filter(w => w.word.toLowerCase() !== q.correctAnswer.toLowerCase());
+        );
+      }
 
-    // 隨機選擇3個干擾選項
-    const shuffled = [...samePosWords].sort(() => 0.5 - Math.random());
-    const selectedDistractors = shuffled.slice(0, 3);
+      // 如果找不到相同詞性的詞彙，使用任何其他詞彙
+      if (samePosWords.length < 3) {
+        samePosWords = allWords.filter(w =>
+          w.word.toLowerCase() !== q.correctAnswer.toLowerCase()
+        );
+      }
 
-    // 組合選項並隨機排序
-    const options = [q.correctAnswer, ...selectedDistractors.map(w => w.word)];
-    const finalOptions = options.sort(() => Math.random() - 0.5);
+      // 隨機選擇3個干擾選項
+      const shuffled = [...samePosWords].sort(() => 0.5 - Math.random());
+      const selectedDistractors = shuffled.slice(0, Math.min(3, shuffled.length));
 
-    // 從詞庫中獲取正確的單字資訊，而不是使用原始的（可能是備用的）資訊
-    let wordInfo = {
-      definition: '無資料',
-      etymology: '無資料',
-      example: '無資料'
-    };
+      // 組合選項並隨機排序
+      const options = [q.correctAnswer, ...selectedDistractors.map(w => w.word)];
+      const finalOptions = options.sort(() => Math.random() - 0.5);
 
-    if (correctWordData) {
-      wordInfo = {
-        definition: correctWordData.chineseMeaning || '無資料',
-        etymology: correctWordData.root || '無資料',
-        example: correctWordData.example1 || correctWordData.example2 || '無資料'
+      // 從詞庫中獲取正確的單字資訊，而不是使用原始的（可能是備用的）資訊
+      let wordInfo = {
+        definition: '無資料',
+        etymology: '無資料',
+        example: '無資料'
       };
-    }
 
-    return {
+      if (correctWordData) {
+        wordInfo = {
+          definition: correctWordData.chineseMeaning || '無資料',
+          etymology: correctWordData.root || '無資料',
+          example: correctWordData.example1 || correctWordData.example2 || '無資料'
+        };
+      }
+
+      return {
+        ...q,
+        options: finalOptions,
+        wordInfo: wordInfo
+      } as Question;
+    });
+  } catch (error) {
+    console.error('生成選項時出錯:', error);
+    // 如果生成選項失敗，至少返回帶有正確答案的問題
+    return basicQuestions.map(q => ({
       ...q,
-      options: finalOptions,
-      wordInfo: wordInfo
-    } as Question;
-  });
+      options: [q.correctAnswer], // 至少包含正確答案
+      wordInfo: q.wordInfo || {
+        definition: '無資料',
+        etymology: '無資料',
+        example: '無資料'
+      }
+    }) as Question);
+  }
 }
 
 // 備用題目（當API不可用時）- 只返回句子和正確答案，選項和單字資訊從CSV獲取
