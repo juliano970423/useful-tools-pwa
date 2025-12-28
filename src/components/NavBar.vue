@@ -10,7 +10,7 @@
 
       <div class="header-actions">
         <mdui-dropdown>
-          <mdui-button class="header-btn text-btn" variant="text" slot="trigger" end-icon="expand_more">
+          <mdui-button class="header-btn text-btn no-theme-color" variant="text" slot="trigger" end-icon="expand_more">
             <span class="btn-text label-large">工具</span>
           </mdui-button>
           <mdui-menu>
@@ -77,7 +77,10 @@ const openGitHub = () => {
 .logo-section {
   display: flex;
   align-items: center;
-  gap: 1rem;
+}
+
+.logo-section > *:not(:first-child) {
+  margin-left: 1rem;
 }
 
 .logo-icon {
@@ -106,7 +109,10 @@ const openGitHub = () => {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.5rem;
+}
+
+.header-actions > *:not(:first-child) {
+  margin-left: 0.5rem;
 }
 
 .header-btn {
@@ -122,6 +128,14 @@ const openGitHub = () => {
   font-weight: 500;
 }
 
+.no-theme-color {
+  --mdui-button-color: var(--mdui-color-on-surface);
+  --mdui-button-color-hover: var(--mdui-color-on-surface-variant);
+  --mdui-button-color-focus: var(--mdui-color-on-surface-variant);
+  --mdui-button-color-pressed: var(--mdui-color-on-surface-variant);
+  color: var(--mdui-color-on-surface) !important;
+}
+
 /* 響應式設計保持原樣 */
 @media (max-width: 1024px) {
   .md3e-header {
@@ -134,8 +148,8 @@ const openGitHub = () => {
     padding: 0.75rem 1.5rem;
   }
 
-  .header-actions {
-    gap: 0.25rem;
+  .header-actions > *:not(:first-child) {
+    margin-left: 0.25rem;
   }
 }
 
@@ -146,7 +160,10 @@ const openGitHub = () => {
 
   .header-content {
     flex-direction: column;
-    gap: 0.5rem;
+  }
+
+  .header-content > *:not(:first-child) {
+    margin-top: 0.5rem;
   }
 
   .header-actions {

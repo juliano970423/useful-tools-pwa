@@ -1061,13 +1061,17 @@ const sentenceParts = computed<SentencePart[]>(() => {
 
   const parts: SentencePart[] = [];
 
-  // 使用更安全的正則表達式來分割句子 - 匹配空白占位符和單詞，其他字符保持原樣
-  const regex = /(____)|([a-zA-Z]+(?:'[a-zA-Z]+)?)/g;
+  // 使用更安全的正則表達式來分割句子 - 匹配空白占位符、單詞和其他字符
+  // 這個正則表達式會匹配：
+  // 1. 空白占位符 '____'
+  // 2. 單詞（字母組合，可能包含撇號）
+  // 3. 其他字符（包括空格、標點符號等）
+  const regex = /(__+)|([a-zA-Z]+(?:'[a-zA-Z]+)?)|([^a-zA-Z_]+)/g;
   let lastIndex = 0;
 
   let match;
   while ((match = regex.exec(sentence)) !== null) {
-    // 添加匹配前的文本（包括空格、標點和其他字符）
+    // 添加匹配前的文本（如果有的話）
     if (match.index > lastIndex) {
       const textBefore = sentence.substring(lastIndex, match.index);
       if (textBefore) {
@@ -1080,6 +1084,8 @@ const sentenceParts = computed<SentencePart[]>(() => {
       parts.push({ type: 'blank', text: match[1] });
     } else if (match[2]) { // 單詞（可能包含撇號）
       parts.push({ type: 'word', text: match[2] });
+    } else if (match[3]) { // 其他字符（包括空格、標點等）
+      parts.push({ type: 'text', text: match[3] });
     }
 
     lastIndex = match.index + match[0].length;
