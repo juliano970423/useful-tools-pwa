@@ -137,6 +137,15 @@ const parseCSVContent = (csvContent: string, level: number): WordData[] => {
       // 添加最後一個字段
       parts.push(current);
 
+      // 移除每個字段的前後引號（如果存在）
+      for (let i = 0; i < parts.length; i++) {
+        let field = parts[i];
+        if (field.startsWith('"') && field.endsWith('"') && field.length >= 2) {
+          field = field.substring(1, field.length - 1); // 移除首尾引號
+        }
+        parts[i] = field;
+      }
+
       // 如果字段數量仍少於7，添加空字段直到達到7個
       while (parts.length < 7) {
         parts.push('');

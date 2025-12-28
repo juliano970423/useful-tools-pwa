@@ -331,6 +331,15 @@ const parseCSVLine = (line: string): string[] => {
   // Add the last field
   result.push(current.trim());
 
+  // 移除每個字段的前後引號（如果存在）
+  for (let j = 0; j < result.length; j++) {
+    let field = result[j];
+    if (field.startsWith('"') && field.endsWith('"') && field.length >= 2) {
+      field = field.substring(1, field.length - 1); // 移除首尾引號
+    }
+    result[j] = field;
+  }
+
   return result;
 }
 
@@ -1052,16 +1061,16 @@ const sentenceParts = computed<SentencePart[]>(() => {
 
   const parts: SentencePart[] = [];
 
-  // 使用更安全的正則表達式來分割句子
+  // 使用更安全的正則表達式來分割句子 - 匹配空白占位符和單詞，其他字符保持原樣
   const regex = /(____)|([a-zA-Z]+(?:'[a-zA-Z]+)?)/g;
   let lastIndex = 0;
 
   let match;
   while ((match = regex.exec(sentence)) !== null) {
-    // 添加匹配前的文本（包括空格和標點）
+    // 添加匹配前的文本（包括空格、標點和其他字符）
     if (match.index > lastIndex) {
       const textBefore = sentence.substring(lastIndex, match.index);
-      if (textBefore.trim() !== '') {
+      if (textBefore) {
         parts.push({ type: 'text', text: textBefore });
       }
     }
@@ -1076,10 +1085,10 @@ const sentenceParts = computed<SentencePart[]>(() => {
     lastIndex = match.index + match[0].length;
   }
 
-  // 添加最後剩餘的文本（包括空格和標點）
+  // 添加最後剩餘的文本（包括空格、標點和其他字符）
   if (lastIndex < sentence.length) {
     const remainingText = sentence.substring(lastIndex);
-    if (remainingText.trim() !== '') {
+    if (remainingText) {
       parts.push({ type: 'text', text: remainingText });
     }
   }
