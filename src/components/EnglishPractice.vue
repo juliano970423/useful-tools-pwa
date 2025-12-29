@@ -383,14 +383,17 @@ const makeApiCall = async (data: any) => {
         })
       }
     } catch (error) {
-      console.error('Error using stored API key:', error)
+      console.error('使用儲存的API金鑰時發生錯誤:', error)
+      // 提示用戶API金鑰可能無效
+      console.warn('API金鑰可能無效，將嘗試使用匿名API');
     }
   }
 
   // Use anonymous API if no valid key is available
   // Convert POST data to GET parameters for anonymous API
   const message = data.messages?.[data.messages.length - 1]?.content || 'Hello';
-  let model = data.model || 'openai-fast';
+  // Use the selected model from localStorage, fallback to 'nova-micro' if not set
+  let model = data.model || localStorage.getItem('selectedAIModel') || 'nova-micro';
   // Ensure the model name is in the correct format for the API
   if (model === 'nova micro' || model === 'openai') {
     model = 'nova-micro';
@@ -414,7 +417,7 @@ const makeApiCall = async (data: any) => {
       }
     }
   } catch (error) {
-    console.error('New anonymous API call failed:', error);
+    console.error('新的匿名API調用失敗:', error);
     // If the new endpoint fails, try the original working endpoint as fallback
     try {
       const response = await axios.post('https://text.pollinations.ai/openai', {
@@ -439,8 +442,13 @@ const makeApiCall = async (data: any) => {
         }
       }
     } catch (fallbackError) {
-      console.error('Fallback anonymous API call also failed:', fallbackError);
-      throw fallbackError;
+      console.error('後備匿名API調用也失敗了:', fallbackError);
+      // 抛出包含詳細錯誤信息的錯誤
+      let errorMessage = 'API調用失敗';
+      if (fallbackError instanceof Error) {
+        errorMessage += `: ${fallbackError.message}`;
+      }
+      throw new Error(errorMessage);
     }
   }
 }
@@ -619,16 +627,20 @@ const generateAIQuestionsFromWords = async (words: WordData[]): Promise<Question
 Words: ${wordList.map(w => w.word).join(', ')}
 
 Requirements:
-1. Each sentence should contain one of these words in context
-2. Replace the target word with "____"
-3. Only provide the sentence and the correct answer (the target word)
-4. Do not generate options, definitions, etymology, or example sentences - these will be retrieved separately
-5. Make sentences natural and contextual
-6. Focus on academic vocabulary usage
-7. Return ONLY the CSV format with no additional text or explanation:
+1. Each sentence should contain ONE of these words in context
+2. The target word MUST be replaced with exactly "____" (4 underscores, not the actual word, not the word "答案")
+3. The sentence should make sense when the blank is filled with the correct word
+4. The correct answer should be the original target word (not "____", not "答案")
+5. Only provide the sentence and the correct answer (the original target word)
+6. Do not generate options, definitions, etymology, or example sentences - these will be retrieved separately
+7. Make sentences natural and contextual
+8. Focus on academic vocabulary usage
+9. Return ONLY the CSV format with no additional text or explanation:
 "句子", "答案"
 "句子", "答案"
 "句子", "答案"
+
+CRITICAL: The sentence must contain "____" (4 underscores) where the target word should be, NOT the actual word itself, NOT the word "答案". The answer should be the actual word. Each sentence must have exactly ONE blank.
 
 Generate exactly ${words.length} sentences, one for each word provided.`
 
@@ -639,7 +651,7 @@ Generate exactly ${words.length} sentences, one for each word provided.`
         content: prompt
       }
     ],
-    model: 'nova-micro',
+    model: localStorage.getItem('selectedAIModel') || 'nova-micro',
     max_tokens: 4000
   })
 
@@ -759,22 +771,36 @@ const generateLocalQuestions = async (level: number) => {
     startQuiz()
 
   } catch (error) {
-    console.error('本地題目生成失敗:', error)
+    console.error('本地題目生成失敗:', error);
 
     // 如果本地生成失敗，回退到API生成
     try {
-      await generateAIPQuestions()
+      await generateAIPQuestions();
     } catch (apiError) {
-      console.error('API題目生成也失敗:', apiError)
+      console.error('API題目生成也失敗:', apiError);
+
+      // 顯示錯誤提示給用戶
+      let errorMessage = '題目生成失敗，請檢查網路連線或稍後再試。';
+      if (apiError instanceof Error) {
+        errorMessage += `\n錯誤詳情: ${apiError.message}`;
+      }
+      alert(errorMessage);
+
       // 最後回退到備用題目
-      const basicBackupQuestions = getBackupQuestions();
-      const backupQuestionsWithOptions = await addOptionsToQuestions(basicBackupQuestions, null);
-      questions.value = backupQuestionsWithOptions;
-      showAIGenerator.value = false
-      startQuiz()
+      try {
+        const basicBackupQuestions = getBackupQuestions();
+        const backupQuestionsWithOptions = await addOptionsToQuestions(basicBackupQuestions, null);
+        questions.value = backupQuestionsWithOptions;
+        showAIGenerator.value = false;
+        startQuiz();
+      } catch (finalError) {
+        console.error('所有題目生成方法都失敗了:', finalError);
+        alert('所有題目生成方法都失敗了，請聯繫開發者或稍後再試。');
+        showAIGenerator.value = false;
+      }
     }
   } finally {
-    isGenerating.value = false
+    isGenerating.value = false;
   }
 }
 
@@ -802,6 +828,9 @@ const generateAIPQuestions = async () => {
       selectedWords = shuffled.slice(0, 50);
     }
 
+    // 輸出選出的50個單字到控制台
+    console.log('選出的單字列表:', selectedWords.map(w => w.word));
+
     // 構建提示詞，包含隨機選取的單字
     const wordList = selectedWords.map(w => ({
       word: w.word,
@@ -814,16 +843,20 @@ const generateAIPQuestions = async () => {
 Words: ${selectedWords.map(w => w.word).join(', ')}
 
 Requirements:
-1. Each sentence should contain one of these words in context
-2. Replace the target word with "____"
-3. Only provide the sentence and the correct answer (the target word)
-4. Do not generate options, definitions, etymology, or example sentences - these will be retrieved separately
-5. Make sentences natural and contextual
-6. Focus on academic vocabulary usage
-7. Return ONLY the CSV format with no additional text or explanation:
+1. Each sentence should contain ONE of these words in context
+2. The target word MUST be replaced with exactly "____" (4 underscores, not the actual word, not the word "答案")
+3. The sentence should make sense when the blank is filled with the correct word
+4. The correct answer should be the original target word (not "____", not "答案")
+5. Only provide the sentence and the correct answer (the original target word)
+6. Do not generate options, definitions, etymology, or example sentences - these will be retrieved separately
+7. Make sentences natural and contextual
+8. Focus on academic vocabulary usage
+9. Return ONLY the CSV format with no additional text or explanation:
 "句子", "答案"
 "句子", "答案"
 "句子", "答案"
+
+CRITICAL: The sentence must contain "____" (4 underscores) where the target word should be, NOT the actual word itself, NOT the word "答案". The answer should be the actual word. Each sentence must have exactly ONE blank.
 
 Generate exactly ${selectedWords.length} sentences, one for each word provided.`
 
@@ -834,7 +867,7 @@ Generate exactly ${selectedWords.length} sentences, one for each word provided.`
           content: prompt
         }
       ],
-      model: 'nova-micro',
+      model: localStorage.getItem('selectedAIModel') || 'nova-micro',
       max_tokens: 4000
     })
 
@@ -959,16 +992,29 @@ Generate exactly ${selectedWords.length} sentences, one for each word provided.`
     }
 
   } catch (error) {
-    console.error('生成題目失敗:', error)
+    console.error('API題目生成失敗:', error);
+
+    // 顯示錯誤提示給用戶
+    let errorMessage = 'API題目生成失敗，將嘗試使用備用題目。';
+    if (error instanceof Error) {
+      errorMessage += `\n錯誤詳情: ${error.message}`;
+    }
+    alert(errorMessage);
 
     // 如果API調用失敗，使用備用題目
-    const basicBackupQuestions = getBackupQuestions();
-    const backupQuestionsWithOptions = await addOptionsToQuestions(basicBackupQuestions, currentLevel.value);
-    questions.value = backupQuestionsWithOptions;
-    showAIGenerator.value = false
-    startQuiz()
+    try {
+      const basicBackupQuestions = getBackupQuestions();
+      const backupQuestionsWithOptions = await addOptionsToQuestions(basicBackupQuestions, currentLevel.value);
+      questions.value = backupQuestionsWithOptions;
+      showAIGenerator.value = false;
+      startQuiz();
+    } catch (finalError) {
+      console.error('API生成和備用題目都失敗了:', finalError);
+      alert('題目生成完全失敗，請檢查網路連線或稍後再試。\n錯誤詳情: ' + (finalError as Error).message);
+      showAIGenerator.value = false;
+    }
   } finally {
-    isGenerating.value = false
+    isGenerating.value = false;
   }
 }
 

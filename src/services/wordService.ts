@@ -311,12 +311,14 @@ export const generateQuestionsFromWords = async (
   // 隨機打亂可用的單字
   const shuffledWords = [...availableWords].sort(() => Math.random() - 0.5);
 
+  // 選擇前 count 個單字並輸出到控制台
+  const selectedWords = shuffledWords.slice(0, count);
+  console.log('選出的單字列表:', selectedWords.map(w => w.word));
+
   const questions: QuestionFromWord[] = []
 
   // 選擇前 count 個單字生成題目
-  for (const word of shuffledWords) {
-    if (questions.length >= count) break;
-
+  for (const word of selectedWords) {
     const question = createQuestionFromWord(word, words)
     if (question) {
       questions.push(question)

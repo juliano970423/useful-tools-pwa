@@ -45,6 +45,28 @@
         </p>
       </div>
 
+      <!-- AI Model Selection -->
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 8px; color: var(--mdui-color-on-surface-variant);">選擇AI模型</label>
+        <mdui-select
+          v-model="selectedModel"
+          placeholder="選擇模型"
+          full-width
+          variant="outlined"
+          end-icon="arrow_drop_down"
+        >
+          <mdui-menu-item value="nova-micro">nova-micro (輕量快速)</mdui-menu-item>
+          <mdui-menu-item value="mistrial">mistrial (中等性能)</mdui-menu-item>
+          <mdui-menu-item value="gemini-fast">gemini-fast (高性能)</mdui-menu-item>
+          <mdui-menu-item value="openai-fast">openai-fast (高性能)</mdui-menu-item>
+          <mdui-menu-item value="grok">grok (高級模型)</mdui-menu-item>
+          <mdui-menu-item value="gemini">gemini (最強模型)</mdui-menu-item>
+        </mdui-select>
+        <p style="margin-top: 8px; font-size: 12px; color: var(--mdui-color-on-surface-variant);">
+          選擇不同的AI模型來生成題目 (nova-micro: 輕量快速, mistrial: 中等性能, gemini-fast: 高性能, openai-fast: 高性能, grok: 高級模型, gemini: 最強模型)
+        </p>
+      </div>
+
       <mdui-button
         variant="filled"
         @click="startInfiniteMode"
@@ -61,6 +83,9 @@
 </template>
 
 <script setup lang="ts">
+import 'mdui/components/select.js';
+import 'mdui/components/menu.js';
+import 'mdui/components/menu-item.js';
 import { ref, onMounted, watch } from 'vue'
 import { getAvailableLevels, getLevelDescription, loadWordData, type WordData } from '@/services/wordService'
 
@@ -73,6 +98,9 @@ const selectedLevel = ref<number | null>(null)
 const isGenerating = ref(false)
 const wordCounts = ref<{ [key: number]: number }>({})
 const previewWords = ref<WordData[]>([])
+
+// AI Model selection
+const selectedModel = ref('nova-micro') // Default model
 
 onMounted(() => {
   availableLevels.value = getAvailableLevels()
@@ -100,6 +128,8 @@ const selectLevel = (level: number) => {
 const startInfiniteMode = () => {
   if (selectedLevel.value) {
     isGenerating.value = true
+    // Store the selected model in localStorage for use in EnglishPractice
+    localStorage.setItem('selectedAIModel', selectedModel.value)
     emit('start-infinite-mode', selectedLevel.value)
   }
 }

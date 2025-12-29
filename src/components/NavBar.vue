@@ -25,7 +25,7 @@
             </router-link>
           </mdui-menu>
         </mdui-dropdown>
-        <mdui-button-icon 
+        <mdui-button-icon
           icon="code"
           @click="openGitHub"
           class="header-btn"
