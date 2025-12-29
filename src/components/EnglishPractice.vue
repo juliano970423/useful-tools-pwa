@@ -556,8 +556,17 @@ const startInfiniteMode = async (level: number) => {
   localStorage.removeItem('questionSource');
   localStorage.removeItem('questionLevel');
   localStorage.removeItem('wrongAnswers');
-  await generateLocalQuestions(level);
-  currentLevel.value = level; // 存儲當前級別，用於後續動態加載
+
+  // 設置當前級別
+  currentLevel.value = level;
+
+  // 嘗試載入現有題目，如果沒有現有題目或已過期，則生成新題目
+  await checkStoredQuestions();
+  if (hasStoredQuestions.value) {
+    await loadExistingQuestions();
+  } else {
+    await generateLocalQuestions(level);
+  }
 }
 
 // 生成初始題目（50題）
@@ -595,12 +604,32 @@ const loadMoreQuestions = async () => {
     questions.value = [...questions.value, ...processedQuestions];
     console.log(`成功加載了 ${processedQuestions.length} 道新題目，總題目數：${questions.value.length}`);
   } catch (error) {
-    console.error('動態加載題目失敗:', error);
-    // 如果加載失敗，使用備用題目
-    const basicBackupQuestions = getBackupQuestions();
-    const backupQuestionsWithOptions = await addOptionsToQuestions(basicBackupQuestions, currentLevel.value);
-    questions.value = [...questions.value, ...backupQuestionsWithOptions];
-    console.log(`使用備用題目加載了 ${backupQuestionsWithOptions.length} 道題目`);
+    console.error('本地題目動態加載失敗:', error);
+    // 如果本地加載失敗，嘗試使用API生成題目
+    try {
+      console.log('嘗試使用API生成更多題目...');
+      const moreQuestions = await generateAIPQuestionsForMoreQuestions();
+
+      if (moreQuestions.length === 0) {
+        throw new Error('API題目生成失敗或返回空結果');
+      }
+
+      // 檢查是否需要為題目添加選項
+      const processedQuestions = moreQuestions.every(q => q.options && q.options.length > 0)
+        ? moreQuestions
+        : await addOptionsToQuestions(moreQuestions, currentLevel.value);
+
+      // 將新題目添加到現有題目列表中
+      questions.value = [...questions.value, ...processedQuestions];
+      console.log(`通過API成功加載了 ${processedQuestions.length} 道新題目，總題目數：${questions.value.length}`);
+    } catch (apiError) {
+      console.error('API題目生成也失敗:', apiError);
+      // 如果API生成也失敗，使用備用題目
+      const basicBackupQuestions = getBackupQuestions();
+      const backupQuestionsWithOptions = await addOptionsToQuestions(basicBackupQuestions, currentLevel.value);
+      questions.value = [...questions.value, ...backupQuestionsWithOptions];
+      console.log(`使用備用題目加載了 ${backupQuestionsWithOptions.length} 道題目`);
+    }
   } finally {
     isGeneratingMoreQuestions.value = false;
   }
@@ -1015,6 +1044,39 @@ Generate exactly ${selectedWords.length} sentences, one for each word provided.`
     }
   } finally {
     isGenerating.value = false;
+  }
+}
+
+// 專門為動態加載更多題目而設計的API生成函數
+const generateAIPQuestionsForMoreQuestions = async (): Promise<Question[]> => {
+  if (!currentLevel.value) {
+    throw new Error('沒有設定當前級別，無法生成題目');
+  }
+
+  try {
+    console.log(`使用API為級別 ${currentLevel.value} 生成更多題目...`);
+
+    // 從當前級別載入單字
+    const levelWords = await loadWordData(currentLevel.value);
+
+    if (levelWords.length === 0) {
+      throw new Error(`級別 ${currentLevel.value} 沒有可用的單字`);
+    }
+
+    // 隨機選擇50個單字
+    const shuffled = [...levelWords].sort(() => 0.5 - Math.random());
+    const selectedWords = shuffled.slice(0, 50);
+
+    // 輸出選出的50個單字到控制台
+    console.log('API生成的單字列表:', selectedWords.map(w => w.word));
+
+    // 使用AI基於這些單字生成題目
+    const aiQuestions = await generateAIQuestionsFromWords(selectedWords);
+
+    return aiQuestions;
+  } catch (error) {
+    console.error('API生成更多題目失敗:', error);
+    throw error;
   }
 }
 
