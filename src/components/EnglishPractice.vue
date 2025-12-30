@@ -117,7 +117,7 @@
 
           <div v-if="llmResponse" style="margin-bottom: 16px; padding: 12px; border-radius: 8px; background-color: var(--mdui-color-surface-variant);">
             <h5 style="margin: 0 0 8px 0;">AI 回覆：</h5>
-            <p style="white-space: pre-wrap;">{{ llmResponse }}</p>
+            <div style="white-space: pre-wrap;" v-html="renderMarkdown(llmResponse)"></div>
           </div>
 
           <div v-if="llmResponse" style="margin-top: 12px;">
@@ -320,6 +320,7 @@ import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import LevelSelector from './LevelSelector.vue'
 import { loadWordData, type WordData } from '@/services/wordService'
+import * as showdown from 'showdown'
 
 // API key management
 const apiKey = ref('')
@@ -592,6 +593,20 @@ const llmResponse = ref('')
 const llmCorrectAnswer = ref('')
 const isAskingLLM = ref(false)
 const selectedCorrectOptions = ref<string[]>([])
+
+// 使用 showdown 渲染 Markdown 內容
+const renderMarkdown = (markdown: string) => {
+  const converter = new showdown.Converter({
+    tables: true,
+    simplifiedAutoLink: true,
+    strikethrough: true,
+    tasklists: true,
+    ghCodeBlocks: true,
+    smoothLivePreview: true,
+    smartIndentationFix: true
+  });
+  return converter.makeHtml(markdown);
+}
 
 // 組件掛載時檢查是否有儲存的題目，如果有則自動載入，並載入已完成的題目ID
 onMounted(async () => {
@@ -1389,12 +1404,20 @@ const askLLM = async () => {
   isAskingLLM.value = true;
 
   try {
-    const prompt = `請分析以下填空題，並提供正確答案和解釋：
+    const prompt = `請分析以下選擇題：
 
-句子: ${currentQuestion.value.sentence}
-選項: ${currentQuestion.value.options?.join(', ') || '無選項'}
+句子：${currentQuestion.value.sentence}
+選項：${currentQuestion.value.options?.join(', ') || '（未提供選項）'}
 
-請提供正確答案，並簡要說明為什麼這個答案是正確的。`;
+請根據句子的語法、語意和一般常識，判斷哪些選項可以合理地填入空格（例如「_____」）讓句子通順且有意義。
+
+注意：
+- 只根據題目中明確給出的句子和選項判斷，不要添加任何未出現的資訊或假設上下文。
+- 如果有多個選項都合理（例如「banana」、「pineapple」對「The monkey is eating a _____」都成立），請全部列出來，並說明它們為什麼都合理。
+- 如果所有選項都不合邏輯、語法錯誤、語義不夠自然，或明顯不符合常識（例如「computer」、「chair」之類不能吃或猴子不會吃的東西），請說「沒有正確答案」。
+- 如果句子本身不清楚（例如沒有明顯空格、句子不完整、意思模糊），請說「題目資訊不足，無法判斷」。
+
+請用簡單、自然的語言解釋你的判斷，幫助學生理解什麼是「語法正確」和「語意合理」。`;
 
     const response = await makeApiCall({
       messages: [
