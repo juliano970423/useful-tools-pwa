@@ -81,17 +81,94 @@
       <!-- 答案反饋 -->
       <div v-if="showAnswer">
         <div style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-          <mdui-icon 
-            :name="selectedAnswer === currentQuestion.correctAnswer ? 'check_circle' : 'error'" 
+          <mdui-icon
+            :name="selectedAnswer === currentQuestion.correctAnswer ? 'check_circle' : 'error'"
             style="font-size: 1.25rem;"
             :style="{ color: selectedAnswer === currentQuestion.correctAnswer ? 'var(--mdui-color-secondary)' : 'var(--mdui-color-error)' }"
           ></mdui-icon>
           <span v-if="selectedAnswer === currentQuestion.correctAnswer">正確！</span>
           <span v-else>正確答案是：{{ currentQuestion.correctAnswer }}</span>
         </div>
-        
-        <mdui-button 
-          variant="filled" 
+
+        <!-- 題目解釋 -->
+        <div v-if="currentQuestion.wordInfo" style="margin-bottom: 16px; padding: 16px; border-radius: 8px; background-color: var(--mdui-color-surface-variant);">
+          <h4 style="margin: 0 0 8px 0; color: var(--mdui-color-primary);">詞彙解釋</h4>
+          <p v-if="currentQuestion.wordInfo.definition" style="margin: 8px 0; font-size: 14px;"><strong>定義:</strong> {{ currentQuestion.wordInfo.definition }}</p>
+          <p v-if="currentQuestion.wordInfo.etymology" style="margin: 8px 0; font-size: 14px;"><strong>詞根:</strong> {{ currentQuestion.wordInfo.etymology }}</p>
+          <p v-if="currentQuestion.wordInfo.example" style="margin: 8px 0; font-size: 14px;"><strong>例句:</strong> {{ currentQuestion.wordInfo.example }}</p>
+        </div>
+
+        <!-- 詢問 LLM 按鈕 -->
+        <div style="margin-bottom: 16px;">
+          <mdui-button
+            variant="tonal"
+            @click="showLLMVerification = !showLLMVerification"
+            full-width
+            size="medium"
+            icon="psychology"
+          >
+            {{ showLLMVerification ? '隱藏' : '驗證答案' }} - 詢問 AI
+          </mdui-button>
+        </div>
+
+        <!-- LLM 驗證界面 -->
+        <div v-if="showLLMVerification" style="margin-bottom: 16px; padding: 16px; border-radius: 8px; background-color: var(--mdui-color-surface);">
+          <h4 style="margin: 0 0 12px 0; color: var(--mdui-color-primary);">AI 驗證</h4>
+
+          <div v-if="llmResponse" style="margin-bottom: 16px; padding: 12px; border-radius: 8px; background-color: var(--mdui-color-surface-variant);">
+            <h5 style="margin: 0 0 8px 0;">AI 回覆：</h5>
+            <p style="white-space: pre-wrap;">{{ llmResponse }}</p>
+          </div>
+
+          <div v-if="llmResponse" style="margin-top: 12px;">
+            <label style="display: block; margin-bottom: 8px; color: var(--mdui-color-on-surface-variant);">選擇正確答案：</label>
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;">
+              <mdui-checkbox
+                v-for="(option, index) in currentQuestion?.options || []"
+                :key="index"
+                :checked="selectedCorrectOptions.includes(option)"
+                @change="toggleCorrectOption(option)"
+              >
+                {{ option }}
+              </mdui-checkbox>
+            </div>
+
+            <div style="margin-top: 12px; display: flex; gap: 8px;">
+              <mdui-button
+                variant="filled"
+                @click="updateCorrectAnswerFromOptions"
+                :disabled="selectedCorrectOptions.length === 0"
+                size="small"
+                style="flex: 1;"
+              >
+                更新正確答案
+              </mdui-button>
+              <mdui-button
+                variant="outlined"
+                @click="markQuestionAsInvalid"
+                size="small"
+                style="flex: 1;"
+              >
+                標記為無效題目
+              </mdui-button>
+            </div>
+          </div>
+
+          <mdui-button
+            v-else
+            variant="filled"
+            @click="askLLM"
+            :loading="isAskingLLM"
+            full-width
+            size="medium"
+            icon="smart_toy"
+          >
+            向 AI 詢問此題
+          </mdui-button>
+        </div>
+
+        <mdui-button
+          variant="filled"
           @click="nextQuestion"
           v-if="currentQuestionIndex < questions.length - 1"
           full-width
@@ -99,9 +176,9 @@
         >
           下一題
         </mdui-button>
-        
-        <mdui-button 
-          variant="filled" 
+
+        <mdui-button
+          variant="filled"
           @click="showResults"
           v-else
           full-width
@@ -237,6 +314,8 @@
 </template>
 
 <script setup lang="ts">
+import 'mdui/components/radio.js';
+import 'mdui/components/radio-group.js';
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import LevelSelector from './LevelSelector.vue'
@@ -507,6 +586,13 @@ const wordInfo = ref<WordInfo>({
   y: 0
 })
 
+// LLM 驗證功能的響應式變量
+const showLLMVerification = ref(false)
+const llmResponse = ref('')
+const llmCorrectAnswer = ref('')
+const isAskingLLM = ref(false)
+const selectedCorrectOptions = ref<string[]>([])
+
 // 組件掛載時檢查是否有儲存的題目，如果有則自動載入，並載入已完成的題目ID
 onMounted(async () => {
   await checkStoredQuestions()
@@ -664,7 +750,8 @@ Requirements:
 6. Do not generate options, definitions, etymology, or example sentences - these will be retrieved separately
 7. Make sentences natural and contextual
 8. Focus on academic vocabulary usage
-9. Return ONLY the CSV format with no additional text or explanation:
+9. CRITICAL: Do NOT use word variations (like adding -s, -ed, -ing) in the sentences. Use the exact base form of the word from the list.
+10. Return ONLY the CSV format with no additional text or explanation:
 "句子", "答案"
 "句子", "答案"
 "句子", "答案"
@@ -880,7 +967,8 @@ Requirements:
 6. Do not generate options, definitions, etymology, or example sentences - these will be retrieved separately
 7. Make sentences natural and contextual
 8. Focus on academic vocabulary usage
-9. Return ONLY the CSV format with no additional text or explanation:
+9. CRITICAL: Do NOT use word variations (like adding -s, -ed, -ing) in the sentences. Use the exact base form of the word from the list.
+10. Return ONLY the CSV format with no additional text or explanation:
 "句子", "答案"
 "句子", "答案"
 "句子", "答案"
@@ -1106,18 +1194,30 @@ const loadExistingQuestions = async () => {
         addOptionsToQuestions(loadedQuestions, levelNum).then(questionsWithOptions => {
           questions.value = questionsWithOptions;
           console.log(`載入${source === 'local' ? '本地' : 'AI'}題目並補充選項 (級別: ${level || 'N/A'})`)
+
+          // 載入已完成的題目ID
+          loadCompletedQuestions();
+
           startQuiz();
         }).catch(error => {
           console.error('為現有題目添加選項時出錯:', error);
           // 如果添加選項失敗，使用原題目
           questions.value = loadedQuestions;
           console.log(`載入${source === 'local' ? '本地' : 'AI'}題目 (級別: ${level || 'N/A'})`)
+
+          // 載入已完成的題目ID
+          loadCompletedQuestions();
+
           startQuiz();
         });
       } else {
         // 題目已有選項，直接使用
         questions.value = loadedQuestions;
         console.log(`載入${source === 'local' ? '本地' : 'AI'}題目 (級別: ${level || 'N/A'})`)
+
+        // 載入已完成的題目ID
+        loadCompletedQuestions();
+
         startQuiz()
       }
     } else {
@@ -1134,11 +1234,53 @@ const loadExistingQuestions = async () => {
 
 // 開始測驗
 const startQuiz = () => {
-  currentQuestionIndex.value = 0
-  correctCount.value = 0
-  wrongAnswers.value = []
+  // 載入已完成的題目ID（如果尚未載入）
+  if (completedQuestionIds.value.size === 0) {
+    loadCompletedQuestions();
+  }
+
+  // 計算已完成的題目數量，並從下一個題目開始
+  let nextUncompletedIndex = 0;
+  if (completedQuestionIds.value.size > 0 && questions.value.length > 0) {
+    // 遍歷題目，找到第一個未完成的題目
+    for (let i = 0; i < questions.value.length; i++) {
+      const question = questions.value[i];
+      const questionId = `${question.sentence}-${question.correctAnswer}`;
+      if (!completedQuestionIds.value.has(questionId)) {
+        nextUncompletedIndex = i;
+        break;
+      }
+    }
+    // 如果所有題目都已完成，則從頭開始（或顯示完成訊息）
+    if (nextUncompletedIndex >= questions.value.length) {
+      nextUncompletedIndex = 0; // 或者可以選擇其他邏輯
+    }
+  }
+
+  currentQuestionIndex.value = nextUncompletedIndex;
+
+  // 重置計數器，因為我們無法從已完成ID中得知之前的正確/錯誤情況
+  correctCount.value = 0;
+
+  // 載入錯題記錄
+  const storedWrongAnswers = localStorage.getItem('wrongAnswers');
+  if (storedWrongAnswers) {
+    try {
+      wrongAnswers.value = JSON.parse(storedWrongAnswers);
+    } catch (error) {
+      console.error('載入錯題記錄失敗:', error);
+      wrongAnswers.value = [];
+    }
+  } else {
+    wrongAnswers.value = [];
+  }
+
   showResult.value = false
   showWrongReview.value = false
+
+  // 重置 LLM 驗證狀態
+  resetLLMVerification()
+
   showNextQuestion()
 }
 
@@ -1148,6 +1290,9 @@ const showNextQuestion = () => {
     currentQuestion.value = questions.value[currentQuestionIndex.value]
     selectedAnswer.value = ''
     showAnswer.value = false
+
+    // 重置 LLM 驗證狀態
+    resetLLMVerification()
   }
 }
 
@@ -1237,6 +1382,125 @@ const selectAnswer = (option: string) => {
   saveCompletedQuestions();
 }
 
+// 向 LLM 詢問題目
+const askLLM = async () => {
+  if (!currentQuestion.value) return;
+
+  isAskingLLM.value = true;
+
+  try {
+    const prompt = `請分析以下填空題，並提供正確答案和解釋：
+
+句子: ${currentQuestion.value.sentence}
+選項: ${currentQuestion.value.options?.join(', ') || '無選項'}
+
+請提供正確答案，並簡要說明為什麼這個答案是正確的。`;
+
+    const response = await makeApiCall({
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      model: localStorage.getItem('selectedAIModel') || 'nova-micro',
+      max_tokens: 1000
+    });
+
+    llmResponse.value = response.data.choices[0].message.content;
+  } catch (error) {
+    console.error('向 LLM 詢問時出錯:', error);
+    llmResponse.value = '詢問 LLM 時發生錯誤，請稍後再試。';
+  } finally {
+    isAskingLLM.value = false;
+  }
+}
+
+// 切換正確選項
+const toggleCorrectOption = (option: string) => {
+  const index = selectedCorrectOptions.value.indexOf(option);
+  if (index > -1) {
+    // 如果已選中，則取消選中
+    selectedCorrectOptions.value.splice(index, 1);
+  } else {
+    // 如果未選中，則添加到選中列表
+    selectedCorrectOptions.value.push(option);
+  }
+}
+
+// 從選項中更新正確答案
+const updateCorrectAnswerFromOptions = () => {
+  if (!currentQuestion.value || selectedCorrectOptions.value.length === 0) return;
+
+  // 使用第一個選中的選項作為正確答案
+  const newCorrectAnswer = selectedCorrectOptions.value[0];
+
+  // 更新當前題目的正確答案
+  currentQuestion.value.correctAnswer = newCorrectAnswer;
+
+  // 如果用戶之前選擇的答案不正確，但現在更新了正確答案，且與用戶選擇一致，則更新正確計數
+  if (selectedAnswer.value === newCorrectAnswer) {
+    correctCount.value++;
+  }
+
+  // 重置 LLM 驗證狀態
+  selectedCorrectOptions.value = [];
+  showLLMVerification.value = false;
+
+  console.log(`正確答案已更新為: ${newCorrectAnswer}`);
+}
+
+// 更新正確答案（保留原有函數以備後用）
+const updateCorrectAnswer = () => {
+  if (!currentQuestion.value || !llmCorrectAnswer.value.trim()) return;
+
+  // 更新當前題目的正確答案
+  currentQuestion.value.correctAnswer = llmCorrectAnswer.value.trim();
+
+  // 如果用戶之前選擇的答案不正確，但現在更新了正確答案，且與用戶選擇一致，則更新正確計數
+  if (selectedAnswer.value === llmCorrectAnswer.value.trim() && selectedAnswer.value !== currentQuestion.value.correctAnswer) {
+    correctCount.value++;
+  }
+
+  // 重置 LLM 驗證狀態
+  llmCorrectAnswer.value = '';
+  showLLMVerification.value = false;
+
+  console.log(`正確答案已更新為: ${llmCorrectAnswer.value.trim()}`);
+}
+
+// 重置 LLM 驗證狀態
+const resetLLMVerification = () => {
+  llmResponse.value = '';
+  llmCorrectAnswer.value = '';
+  selectedCorrectOptions.value = [];
+  showLLMVerification.value = false;
+  isAskingLLM.value = false;
+}
+
+// 標記題目為無效
+const markQuestionAsInvalid = () => {
+  if (!currentQuestion.value) return;
+
+  // 將當前題目標記為已完成，但不計入正確/錯誤
+  const questionId = `${currentQuestion.value.sentence}-${currentQuestion.value.correctAnswer}`;
+  completedQuestionIds.value.add(questionId);
+
+  // 保存已完成的題目ID到本地存儲
+  saveCompletedQuestions();
+
+  // 重置 LLM 驗證狀態
+  llmResponse.value = '';
+  llmCorrectAnswer.value = '';
+  selectedCorrectOptions.value = [];
+  showLLMVerification.value = false;
+
+  // 自動跳轉到下一題
+  nextQuestion();
+
+  console.log('題目已標記為無效並跳轉到下一題');
+}
+
 // 保存已完成的題目ID到本地存儲
 const saveCompletedQuestions = () => {
   localStorage.setItem('completedQuestionIds', JSON.stringify(Array.from(completedQuestionIds.value)));
@@ -1299,17 +1563,23 @@ const nextQuestion = async () => {
   }
 
   showNextQuestion()
+
+  // 重置 LLM 驗證狀態
+  resetLLMVerification()
 }
 
 // 顯示結果
 const showResults = () => {
   showResult.value = true
   currentQuestion.value = null
-  
+
   // 儲存錯題到local storage
   if (wrongAnswers.value.length > 0) {
     localStorage.setItem('wrongAnswers', JSON.stringify(wrongAnswers.value))
   }
+
+  // 重置 LLM 驗證狀態
+  resetLLMVerification()
 }
 
 // 重新開始
@@ -1321,6 +1591,9 @@ const restart = () => {
   showWrongReview.value = false
   correctCount.value = 0
   wrongAnswers.value = []
+
+  // 重置 LLM 驗證狀態
+  resetLLMVerification()
 }
 
 // 開始新練習並選擇級別
@@ -1335,6 +1608,9 @@ const startNewLevel = () => {
   wrongAnswers.value = []
   // 顯示級別選擇器
   showLevelSelector.value = true
+
+  // 重置 LLM 驗證狀態
+  resetLLMVerification()
 }
 
 // 顯示錯題
@@ -1707,7 +1983,7 @@ const addOptionsToQuestions = async (basicQuestions: Omit<Question, 'options'>[]
     if (level !== null) {
       allWords = await loadWordData(level);
     } else {
-      // 如果沒有指定級別，載入所有級別的詞彙
+      // 如果沒有指定���別，載入所有級別的詞彙
       for (let lvl = 1; lvl <= 6; lvl++) {
         const words = await loadWordData(lvl);
         allWords = [...allWords, ...words];
