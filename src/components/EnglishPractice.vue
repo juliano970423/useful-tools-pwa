@@ -187,6 +187,17 @@
         >
           完成練習
         </mdui-button>
+
+        <mdui-button
+          variant="outlined"
+          @click="stopPractice"
+          full-width
+          size="large"
+          icon="stop"
+          style="margin-top: 12px;"
+        >
+          停止練習
+        </mdui-button>
       </div>
     </div>
 
@@ -278,6 +289,16 @@
         >
           查看錯題 ({{ wrongAnswers.length }})
         </mdui-button>
+
+        <mdui-button
+          variant="outlined"
+          @click="stopPractice"
+          full-width
+          size="large"
+          icon="stop"
+        >
+          停止練習
+        </mdui-button>
       </div>
     </div>
 
@@ -317,10 +338,13 @@
 import 'mdui/components/radio.js';
 import 'mdui/components/radio-group.js';
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 import LevelSelector from './LevelSelector.vue'
 import { loadWordData, type WordData } from '@/services/wordService'
 import * as showdown from 'showdown'
+
+const router = useRouter()
 
 // API key management
 const apiKey = ref('')
@@ -759,14 +783,15 @@ Words: ${wordList.map(w => w.word).join(', ')}
 Requirements:
 1. Each sentence should contain ONE of these words in context
 2. The target word MUST be replaced with exactly "____" (4 underscores, not the actual word, not the word "答案")
-3. The sentence should make sense when the blank is filled with the correct word
+3. The sentence should make sense when the blank is filled with the correct word and provide clear semantic context for the answer
 4. The correct answer should be the original target word (not "____", not "答案")
 5. Only provide the sentence and the correct answer (the original target word)
 6. Do not generate options, definitions, etymology, or example sentences - these will be retrieved separately
-7. Make sentences natural and contextual
-8. Focus on academic vocabulary usage
+7. Make sentences natural and contextual, ensuring the meaning of the sentence clearly points to the correct answer
+8. Focus on academic vocabulary usage with clear semantic relationships
 9. CRITICAL: Do NOT use word variations (like adding -s, -ed, -ing) in the sentences. Use the exact base form of the word from the list.
-10. Return ONLY the CSV format with no additional text or explanation:
+10. CRITICAL: Ensure each sentence is unambiguous - there should be only ONE logical answer that fits the context both grammatically and semantically
+11. Return ONLY the CSV format with no additional text or explanation:
 "句子", "答案"
 "句子", "答案"
 "句子", "答案"
@@ -976,14 +1001,15 @@ Words: ${selectedWords.map(w => w.word).join(', ')}
 Requirements:
 1. Each sentence should contain ONE of these words in context
 2. The target word MUST be replaced with exactly "____" (4 underscores, not the actual word, not the word "答案")
-3. The sentence should make sense when the blank is filled with the correct word
+3. The sentence should make sense when the blank is filled with the correct word and provide clear semantic context for the answer
 4. The correct answer should be the original target word (not "____", not "答案")
 5. Only provide the sentence and the correct answer (the original target word)
 6. Do not generate options, definitions, etymology, or example sentences - these will be retrieved separately
-7. Make sentences natural and contextual
-8. Focus on academic vocabulary usage
+7. Make sentences natural and contextual, ensuring the meaning of the sentence clearly points to the correct answer
+8. Focus on academic vocabulary usage with clear semantic relationships
 9. CRITICAL: Do NOT use word variations (like adding -s, -ed, -ing) in the sentences. Use the exact base form of the word from the list.
-10. Return ONLY the CSV format with no additional text or explanation:
+10. CRITICAL: Ensure each sentence is unambiguous - there should be only ONE logical answer that fits the context both grammatically and semantically
+11. Return ONLY the CSV format with no additional text or explanation:
 "句子", "答案"
 "句子", "答案"
 "句子", "答案"
@@ -1409,15 +1435,16 @@ const askLLM = async () => {
 句子：${currentQuestion.value.sentence}
 選項：${currentQuestion.value.options?.join(', ') || '（未提供選項）'}
 
-請根據句子的語法、語意和一般常識，判斷哪些選項可以合理地填入空格（例如「_____」）讓句子通順且有意義。
+請根據句子的語法、語意和一般常識，判斷哪個選項最適合填入空格讓句子通順且有意義。
 
 注意：
 - 只根據題目中明確給出的句子和選項判斷，不要添加任何未出現的資訊或假設上下文。
-- 如果有多個選項都合理（例如「banana」、「pineapple」對「The monkey is eating a _____」都成立），請全部列出來，並說明它們為什麼都合理。
-- 如果所有選項都不合邏輯、語法錯誤、語義不夠自然，或明顯不符合常識（例如「computer」、「chair」之類不能吃或猴子不會吃的東西），請說「沒有正確答案」。
+- 優先選擇語義最符合句子上下文的選項，即使多個選項在語法上都可行。
+- 如果有多個選項都合理，請指出最符合語境的那個選項，並說明其他選項為什麼不太合適。
+- 如果所有選項都不合邏輯、語法錯誤、語義不夠自然，或明顯不符合常識，請說「沒有正確答案」。
 - 如果句子本身不清楚（例如沒有明顯空格、句子不完整、意思模糊），請說「題目資訊不足，無法判斷」。
 
-請用簡單、自然的語言解釋你的判斷，幫助學生理解什麼是「語法正確」和「語意合理」。`;
+請用簡單、自然的語言解釋你的判斷，幫助學生理解什麼是「語法正確」和「語意合理」，並特別強調語義匹配的重要性。`;
 
     const response = await makeApiCall({
       messages: [
@@ -1627,6 +1654,7 @@ const startNewLevel = () => {
   currentQuestion.value = null
   showResult.value = false
   showWrongReview.value = false
+  showAIGenerator.value = false  // Also hide AI generator
   correctCount.value = 0
   wrongAnswers.value = []
   // 顯示級別選擇器
@@ -1644,6 +1672,26 @@ const showWrongAnswers = () => {
 // 關閉錯題回顧
 const closeWrongReview = () => {
   showWrongReview.value = false
+}
+
+// 停止練習並返回主頁面
+const stopPractice = () => {
+  // 清除當前練習的狀態
+  questions.value = []
+  currentQuestionIndex.value = 0
+  currentQuestion.value = null
+  showResult.value = false
+  showWrongReview.value = false
+  showLevelSelector.value = false
+  showAIGenerator.value = false
+  correctCount.value = 0
+  wrongAnswers.value = []
+
+  // 重置 LLM 驗證狀態
+  resetLLMVerification()
+
+  // 導航到英語訓練主頁面
+  router.push('/english-training')
 }
 
 // 顯示單字信息（用於選項）

@@ -49,21 +49,22 @@
       <div style="margin-bottom: 16px;">
         <label style="display: block; margin-bottom: 8px; color: var(--mdui-color-on-surface-variant);">選擇AI模型</label>
         <mdui-select
-          v-model="selectedModel"
+          :value="selectedModel"
+          @change="onModelChange"
           placeholder="選擇模型"
           full-width
           variant="outlined"
           end-icon="arrow_drop_down"
         >
           <mdui-menu-item value="nova-micro">nova-micro (輕量快速)</mdui-menu-item>
-          <mdui-menu-item value="mistrial">mistrial (中等性能)</mdui-menu-item>
+          <mdui-menu-item value="mistral">mistral (中等性能)</mdui-menu-item>
           <mdui-menu-item value="gemini-fast">gemini-fast (高性能)</mdui-menu-item>
           <mdui-menu-item value="openai-fast">openai-fast (高性能)</mdui-menu-item>
           <mdui-menu-item value="grok">grok (高級模型)</mdui-menu-item>
           <mdui-menu-item value="gemini">gemini (最強模型)</mdui-menu-item>
         </mdui-select>
         <p style="margin-top: 8px; font-size: 12px; color: var(--mdui-color-on-surface-variant);">
-          選擇不同的AI模型來生成題目 (nova-micro: 輕量快速, mistrial: 中等性能, gemini-fast: 高性能, openai-fast: 高性能, grok: 高級模型, gemini: 最強模型)
+          選擇不同的AI模型來生成題目 (nova-micro: 輕量快速, mistral: 中等性能, gemini-fast: 高性能, openai-fast: 高性能, grok: 高級模型, gemini: 最強模型)
         </p>
       </div>
 
@@ -123,6 +124,11 @@ onMounted(() => {
 
 const selectLevel = (level: number) => {
   selectedLevel.value = level
+}
+
+const onModelChange = (event: Event) => {
+  const target = event.target as HTMLElement & { value: string };
+  selectedModel.value = target.value;
 }
 
 const startInfiniteMode = () => {

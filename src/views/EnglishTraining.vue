@@ -139,7 +139,8 @@
 
           <div v-else style="display: flex; flex-direction: column; align-items: center; gap: 16px; max-width: 400px; margin: 0 auto;">
             <mdui-text-field
-              v-model="apiKey"
+              :value="apiKey"
+              @input="apiKey = $event.target.value"
               label="Enter your API Key"
               type="password"
               placeholder="sk-..."
