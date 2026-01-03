@@ -1,10 +1,5 @@
 <template>
   <div>
-    <!-- 難度選擇 -->
-    <LevelSelector
-      v-if="!currentQuestion && showLevelSelector"
-      @start-infinite-mode="startInfiniteMode"
-    />
 
     <!-- AI生成題目 -->
     <div v-if="!currentQuestion && showAIGenerator" style="text-align: center; padding: 32px 16px;">
@@ -338,9 +333,8 @@
 import 'mdui/components/radio.js';
 import 'mdui/components/radio-group.js';
 import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
-import LevelSelector from './LevelSelector.vue'
 import { loadWordData, type WordData } from '@/services/wordService'
 import * as showdown from 'showdown'
 
@@ -590,7 +584,6 @@ const showWrongReview = ref(false)
 const correctCount = ref(0)
 const wrongAnswers = ref<Question[]>([])
 const hasStoredQuestions = ref(false)
-const showLevelSelector = ref(false)
 const showAIGenerator = ref(false)
 const currentLevel = ref<number | null>(null) // 記錄當前級別，用於無限模式
 const isGeneratingMoreQuestions = ref(false) // 是否正在生成更多題目
@@ -632,43 +625,57 @@ const renderMarkdown = (markdown: string) => {
   return converter.makeHtml(markdown);
 }
 
-// 組件掛載時檢查是否有儲存的題目，如果有則自動載入，並載入已完成的題目ID
+// 組件掛載時使用路由參數獲取級別，檢查是否有對應級別的儲存題目，如果有則自動載入，並載入已完成的題目ID
 onMounted(async () => {
-  await checkStoredQuestions()
-  loadCompletedQuestions(); // 載入已完成的題目ID
-  // 如果有儲存的題目，立即載入並開始測驗
-  if (hasStoredQuestions.value) {
-    await loadExistingQuestions()
+  const route = useRoute();
+  const level = route.params.level ? parseInt(route.params.level as string, 10) : null;
+
+  if (level) {
+    currentLevel.value = level;
+    await checkStoredQuestions(level);
+    loadCompletedQuestions(); // 載入已完成的題目ID
+
+    // 如果有對應級別的儲存題目，立即載入並開始測驗
+    if (hasStoredQuestions.value) {
+      await loadExistingQuestions()
+    } else {
+      // 如果沒有對應級別的儲存題目，觸發題目生成流程
+      await generateLocalQuestions(level);
+    }
   } else {
-    // 如果沒有儲存的題目，直接顯示難度選擇器
-    showLevelSelector.value = true
+    // 如果沒有路由參數，顯示錯誤或導航回主頁
+    console.error('缺少級別參數');
+    router.push('/english-training');
   }
 })
 
 // 檢查是否有儲存的題目
-const checkStoredQuestions = () => {
+const checkStoredQuestions = (level: number) => {
   const stored = localStorage.getItem('englishQuestions')
   const storedTimestamp = localStorage.getItem('questionsTimestamp')
-  
-  if (stored && storedTimestamp) {
+  const storedLevel = localStorage.getItem('questionLevel')
+
+  if (stored && storedTimestamp && storedLevel) {
     const timestamp = parseInt(storedTimestamp)
+    const storedLevelNum = parseInt(storedLevel)
     const now = Date.now()
     const oneWeek = 7 * 24 * 60 * 60 * 1000
-    
-    // 如果題目在一周內，可以使用
-    if (now - timestamp < oneWeek) {
+
+    // 檢查題目是否在一周內且級別匹配
+    if (now - timestamp < oneWeek && storedLevelNum === level) {
       hasStoredQuestions.value = true
     } else {
-      // 清除過期的題目
+      // 清除過期的題目或不匹配級別的題目
       localStorage.removeItem('englishQuestions')
       localStorage.removeItem('questionsTimestamp')
+      localStorage.removeItem('questionSource')
+      localStorage.removeItem('questionLevel')
     }
   }
 }
 
 // 返回模式選擇
 const backToModeSelection = () => {
-  showLevelSelector.value = false
   showAIGenerator.value = false
 }
 
@@ -686,7 +693,7 @@ const startInfiniteMode = async (level: number) => {
   currentLevel.value = level;
 
   // 嘗試載入現有題目，如果沒有現有題目或已過期，則生成新題目
-  await checkStoredQuestions();
+  await checkStoredQuestions(level);
   if (hasStoredQuestions.value) {
     await loadExistingQuestions();
   } else {
@@ -703,6 +710,34 @@ const generateInitialQuestions = async (localWords: WordData[], level: number) =
   const aiQuestions = await generateAIQuestionsFromWords(selectedWords)
 
   return aiQuestions
+}
+
+// 從特定級別的詞彙庫生成題目
+const generateQuestionsFromWords = async (level: number, count: number): Promise<Question[]> => {
+  console.log(`從級別 ${level} 生成 ${count} 道題目...`);
+
+  try {
+    // 從指定級別載入詞彙
+    const levelWords = await loadWordData(level);
+
+    if (levelWords.length === 0) {
+      throw new Error(`級別 ${level} 沒有可用的單字`);
+    }
+
+    // 隨機選擇指定數量的單字
+    const shuffled = [...levelWords].sort(() => 0.5 - Math.random());
+    const selectedWords = shuffled.slice(0, Math.min(count, shuffled.length));
+
+    console.log(`為級別 ${level} 選擇了 ${selectedWords.length} 個單字生成題目`);
+
+    // 使用AI基於這些單字生成題目
+    const aiQuestions = await generateAIQuestionsFromWords(selectedWords);
+
+    return aiQuestions;
+  } catch (error) {
+    console.error(`從級別 ${level} 生成題目失敗:`, error);
+    throw error;
+  }
 }
 
 // 在接近末尾時動態加載更多題目
@@ -1216,20 +1251,21 @@ const loadExistingQuestions = async () => {
   const source = localStorage.getItem('questionSource')
   const level = localStorage.getItem('questionLevel')
 
-  if (stored && storedTimestamp) {
+  if (stored && storedTimestamp && level) {
     const timestamp = parseInt(storedTimestamp)
+    const storedLevelNum = parseInt(level)
     const now = Date.now()
     const oneWeek = 7 * 24 * 60 * 60 * 1000
 
-    // 如果題目在一周內，可以使用
-    if (now - timestamp < oneWeek) {
+    // 檢查題目是否在一周內且級別匹配
+    if (now - timestamp < oneWeek && storedLevelNum === currentLevel.value) {
       let loadedQuestions = JSON.parse(stored);
 
       // 檢查是否有題目缺少選項，如果有則補充選項
       // 如果第一個問題沒有選項，則為所有問題添加選項
       if (loadedQuestions.length > 0 && (!loadedQuestions[0].options || loadedQuestions[0].options.length === 0)) {
         // 這表示題目是新格式（沒有選項），需要添加選項
-        const levelNum = level ? parseInt(level) : null;
+        const levelNum = storedLevelNum;
         // 這裡需要異步處理，但由於是從localStorage加載的，我們需要特別處理
         // 一種方式是重新調用選項生成函數
         addOptionsToQuestions(loadedQuestions, levelNum).then(questionsWithOptions => {
@@ -1262,13 +1298,13 @@ const loadExistingQuestions = async () => {
         startQuiz()
       }
     } else {
-      // 清除過期的題目
+      // 清除過期的題目或不匹配級別的題目
       localStorage.removeItem('englishQuestions')
       localStorage.removeItem('questionsTimestamp')
       localStorage.removeItem('questionSource')
       localStorage.removeItem('questionLevel')
       hasStoredQuestions.value = false
-      console.log('本地題目已過期，已清除')
+      console.log('本地題目已過期或級別不匹配，已清除')
     }
   }
 }
@@ -1633,7 +1669,7 @@ const showResults = () => {
 }
 
 // 重新開始
-const restart = () => {
+const restart = async () => {
   questions.value = []
   currentQuestionIndex.value = 0
   currentQuestion.value = null
@@ -1644,6 +1680,20 @@ const restart = () => {
 
   // 重置 LLM 驗證狀態
   resetLLMVerification()
+
+  // 重新載入當前級別的題目或生成新題目
+  if (currentLevel.value) {
+    await checkStoredQuestions(currentLevel.value);
+    if (hasStoredQuestions.value) {
+      await loadExistingQuestions();
+    } else {
+      await generateLocalQuestions(currentLevel.value);
+    }
+  } else {
+    // 如果沒有當前級別，可能需要導航回主頁面或顯示錯誤
+    console.error('缺少級別資訊，無法重新開始');
+    router.push('/english-training');
+  }
 }
 
 // 開始新練習並選擇級別
@@ -1657,8 +1707,8 @@ const startNewLevel = () => {
   showAIGenerator.value = false  // Also hide AI generator
   correctCount.value = 0
   wrongAnswers.value = []
-  // 顯示級別選擇器
-  showLevelSelector.value = true
+  // Navigate back to the English training page to select level
+  router.push('/english-training?showLevelSelector=true');
 
   // 重置 LLM 驗證狀態
   resetLLMVerification()
@@ -1682,7 +1732,6 @@ const stopPractice = () => {
   currentQuestion.value = null
   showResult.value = false
   showWrongReview.value = false
-  showLevelSelector.value = false
   showAIGenerator.value = false
   correctCount.value = 0
   wrongAnswers.value = []

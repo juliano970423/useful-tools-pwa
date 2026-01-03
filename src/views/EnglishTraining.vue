@@ -78,116 +78,121 @@
 
       <!-- 主入口頁面內容 (當路徑是 /english-training 時，不包括子路由) -->
       <div v-else-if="isMainEnglishRoute">
-        <h1 style="text-align: center; margin-bottom: 16px; color: var(--mdui-color-primary);">
-          英文詞彙訓練
-        </h1>
-
-        <p style="text-align: center; margin-bottom: 32px; color: var(--mdui-color-on-surface-variant);">
-          提升您的英語詞彙量，輕鬆應對各種英語考試和日常交流
-        </p>
-
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-bottom: 32px;">
-          <mdui-card variant="outlined" style="padding: 24px; text-align: center;">
-            <mdui-icon name="psychology" style="font-size: 3rem; color: var(--mdui-color-primary); margin-bottom: 16px;"></mdui-icon>
-            <h3 style="margin: 16px 0 8px 0;">智能題目生成</h3>
-            <p style="color: var(--mdui-color-on-surface-variant); margin: 0 0 16px 0;">
-              基於學測6000字詞庫，AI智能生成個性化練習題目
-            </p>
-            <mdui-button
-              variant="tonal"
-              @click="startPractice"
-              icon="play_arrow"
-            >
-              開始練習
-            </mdui-button>
-          </mdui-card>
-
-          <mdui-card variant="outlined" style="padding: 24px; text-align: center;">
-            <mdui-icon name="history" style="font-size: 3rem; color: var(--mdui-color-primary); margin-bottom: 16px;"></mdui-icon>
-            <h3 style="margin: 16px 0 8px 0;">學習進度追蹤</h3>
-            <p style="color: var(--mdui-color-on-surface-variant); margin: 0 0 16px 0;">
-              自動記錄已完成題目，隨時檢視學習歷程
-            </p>
-            <mdui-button
-              variant="tonal"
-              @click="viewHistory"
-              icon="history"
-            >
-              查看歷史
-            </mdui-button>
-          </mdui-card>
+        <div v-if="showLevelSelector">
+          <LevelSelector @start-infinite-mode="handleLevelSelected" />
         </div>
+        <div v-else>
+          <h1 style="text-align: center; margin-bottom: 16px; color: var(--mdui-color-primary);">
+            英文詞彙訓練
+          </h1>
 
-        <!-- API Key Management -->
-        <div style="margin: 32px 0; padding: 24px; border-radius: 12px; background-color: var(--mdui-color-surface-variant);">
-          <h3 style="margin: 0 0 16px 0; text-align: center; color: var(--mdui-color-primary);">API 設定</h3>
+          <p style="text-align: center; margin-bottom: 32px; color: var(--mdui-color-on-surface-variant);">
+            提升您的英語詞彙量，輕鬆應對各種英語考試和日常交流
+          </p>
 
-          <div v-if="!isApiKeyInputVisible" style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
-            <p style="margin: 0; font-size: 16px; color: var(--mdui-color-on-surface-variant); text-align: center;">
-              <span v-if="apiKey">已設定 API Key</span>
-              <span v-else>未設定 API Key (使用匿名服務)</span>
-            </p>
-            <mdui-button
-              variant="outlined"
-              @click="isApiKeyInputVisible = true"
-              :icon="apiKey ? 'edit' : 'key'"
-              size="large"
-            >
-              {{ apiKey ? '編輯 API Key' : '設定 API Key' }}
-            </mdui-button>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-bottom: 32px;">
+            <mdui-card variant="outlined" style="padding: 24px; text-align: center;">
+              <mdui-icon name="psychology" style="font-size: 3rem; color: var(--mdui-color-primary); margin-bottom: 16px;"></mdui-icon>
+              <h3 style="margin: 16px 0 8px 0;">智能題目生成</h3>
+              <p style="color: var(--mdui-color-on-surface-variant); margin: 0 0 16px 0;">
+                基於學測6000字詞庫，AI智能生成個性化練習題目
+              </p>
+              <mdui-button
+                variant="tonal"
+                @click="startPractice"
+                icon="play_arrow"
+              >
+                開始練習
+              </mdui-button>
+            </mdui-card>
+
+            <mdui-card variant="outlined" style="padding: 24px; text-align: center;">
+              <mdui-icon name="history" style="font-size: 3rem; color: var(--mdui-color-primary); margin-bottom: 16px;"></mdui-icon>
+              <h3 style="margin: 16px 0 8px 0;">學習進度追蹤</h3>
+              <p style="color: var(--mdui-color-on-surface-variant); margin: 0 0 16px 0;">
+                自動記錄已完成題目，隨時檢視學習歷程
+              </p>
+              <mdui-button
+                variant="tonal"
+                @click="viewHistory"
+                icon="history"
+              >
+                查看歷史
+              </mdui-button>
+            </mdui-card>
           </div>
 
-          <div v-else style="display: flex; flex-direction: column; align-items: center; gap: 16px; max-width: 400px; margin: 0 auto;">
-            <mdui-text-field
-              :value="apiKey"
-              @input="apiKey = $event.target.value"
-              label="Enter your API Key"
-              type="password"
-              placeholder="sk-..."
-              full-width
-            ></mdui-text-field>
-            <div style="display: flex; gap: 12px; width: 100%;">
+          <!-- API Key Management -->
+          <div style="margin: 32px 0; padding: 24px; border-radius: 12px; background-color: var(--mdui-color-surface-variant);">
+            <h3 style="margin: 0 0 16px 0; text-align: center; color: var(--mdui-color-primary);">API 設定</h3>
+
+            <div v-if="!isApiKeyInputVisible" style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
+              <p style="margin: 0; font-size: 16px; color: var(--mdui-color-on-surface-variant); text-align: center;">
+                <span v-if="apiKey">已設定 API Key</span>
+                <span v-else>未設定 API Key (使用匿名服務)</span>
+              </p>
               <mdui-button
                 variant="outlined"
-                @click="isApiKeyInputVisible = false; apiKey = localStorage.getItem('englishPracticeApiKey') ? decryptApiKey(localStorage.getItem('englishPracticeApiKey') || '') : ''"
-                full-width
+                @click="isApiKeyInputVisible = true"
+                :icon="apiKey ? 'edit' : 'key'"
+                size="large"
               >
-                取消
-              </mdui-button>
-              <mdui-button
-                variant="filled"
-                @click="saveApiKey"
-                full-width
-              >
-                儲存
+                {{ apiKey ? '編輯 API Key' : '設定 API Key' }}
               </mdui-button>
             </div>
+
+            <div v-else style="display: flex; flex-direction: column; align-items: center; gap: 16px; max-width: 400px; margin: 0 auto;">
+              <mdui-text-field
+                :value="apiKey"
+                @input="apiKey = $event.target.value"
+                label="Enter your API Key"
+                type="password"
+                placeholder="sk-..."
+                full-width
+              ></mdui-text-field>
+              <div style="display: flex; gap: 12px; width: 100%;">
+                <mdui-button
+                  variant="outlined"
+                  @click="isApiKeyInputVisible = false; apiKey = localStorage.getItem('englishPracticeApiKey') ? decryptApiKey(localStorage.getItem('englishPracticeApiKey') || '') : ''"
+                  full-width
+                >
+                  取消
+                </mdui-button>
+                <mdui-button
+                  variant="filled"
+                  @click="saveApiKey"
+                  full-width
+                >
+                  儲存
+                </mdui-button>
+              </div>
+            </div>
           </div>
-        </div>
 
-        <div style="text-align: center; margin-top: 32px;">
-          <mdui-button
-            variant="filled"
-            @click="startPractice"
-            icon="auto_awesome"
-            size="large"
-            style="margin: 0 auto;"
-          >
-            立即開始練習
-          </mdui-button>
-        </div>
+          <div style="text-align: center; margin-top: 32px;">
+            <mdui-button
+              variant="filled"
+              @click="startPractice"
+              icon="auto_awesome"
+              size="large"
+              style="margin: 0 auto;"
+            >
+              立即開始練習
+            </mdui-button>
+          </div>
 
-        <!-- 調試功能：清除本地存儲的題目 -->
-        <div style="text-align: center; margin-top: 16px;">
-          <mdui-button
-            variant="outlined"
-            @click="clearStoredQuestions"
-            icon="delete_forever"
-            size="small"
-            style="margin: 0 auto;"
-          >
-            清除本地題目緩存（調試用）
-          </mdui-button>
+          <!-- 調試功能：清除本地存儲的題目 -->
+          <div style="text-align: center; margin-top: 16px;">
+            <mdui-button
+              variant="outlined"
+              @click="clearStoredQuestions"
+              icon="delete_forever"
+              size="small"
+              style="margin: 0 auto;"
+            >
+              清除本地題目緩存（調試用）
+            </mdui-button>
+          </div>
         </div>
       </div>
 
@@ -201,9 +206,40 @@
 import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import NavBar from '@/components/NavBar.vue'
+import LevelSelector from '@/components/LevelSelector.vue'
 
 const router = useRouter()
 const route = useRoute()
+
+const showLevelSelector = ref(false)
+
+// Check for query parameter to show level selector on mount
+onMounted(() => {
+  if (route.query.showLevelSelector === 'true') {
+    showLevelSelector.value = true
+    // Remove the query parameter from URL to clean up
+    const newQuery = { ...route.query };
+    delete newQuery.showLevelSelector;
+    router.replace({ query: newQuery });
+  }
+})
+
+// Watch for route changes to handle the query parameter
+watch(() => route.query.showLevelSelector, (newVal) => {
+  if (newVal === 'true') {
+    showLevelSelector.value = true
+    // Remove the query parameter from URL to clean up
+    const newQuery = { ...route.query };
+    delete newQuery.showLevelSelector;
+    router.replace({ query: newQuery });
+  } else if (newVal === 'false') {
+    showLevelSelector.value = false
+    // Remove the query parameter from URL to clean up
+    const newQuery = { ...route.query };
+    delete newQuery.showLevelSelector;
+    router.replace({ query: newQuery });
+  }
+})
 
 // Computed properties for route matching
 const isHistoryRoute = computed(() => route.path === '/english-training/history');
@@ -375,7 +411,44 @@ const clearStoredQuestions = () => {
 }
 
 const startPractice = () => {
-  router.push('/english-training/practice')
+  showLevelSelector.value = true
+}
+
+const handleLevelSelected = (level: number) => {
+  const storedQuestionsRaw = localStorage.getItem('englishQuestions');
+  const storedLevel = localStorage.getItem('questionLevel');
+  const completedIdsRaw = localStorage.getItem('completedQuestionIds');
+  
+  let useLocal = false;
+
+  if (storedQuestionsRaw && storedLevel && parseInt(storedLevel, 10) === level) {
+    try {
+      const questions = JSON.parse(storedQuestionsRaw);
+      const completedIds = completedIdsRaw ? new Set(JSON.parse(completedIdsRaw)) : new Set();
+      
+      const hasUncompleted = questions.some((q: any) => {
+        const questionId = `${q.sentence}-${q.correctAnswer}`;
+        return !completedIds.has(questionId);
+      });
+
+      if (hasUncompleted) {
+        useLocal = true;
+      }
+    } catch (e) {
+      console.error("Error parsing stored questions, will generate new ones.", e);
+    }
+  }
+  
+  if (!useLocal) {
+    // No local questions for this level or all are completed, so clear them
+    // to force regeneration in the practice component.
+    localStorage.removeItem('englishQuestions');
+    localStorage.removeItem('questionsTimestamp');
+    localStorage.removeItem('questionSource');
+    localStorage.removeItem('questionLevel');
+  }
+  
+  router.push({ name: 'english-practice', params: { level } });
 }
 
 const viewHistory = () => {

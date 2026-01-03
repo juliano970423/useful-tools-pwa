@@ -46,7 +46,7 @@ const router = createRouter({
       component: EnglishTraining,
       children: [
         {
-          path: 'practice',
+          path: 'practice/:level',
           name: 'english-practice',
           component: () => import('@/components/EnglishPractice.vue')
         },
