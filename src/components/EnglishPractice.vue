@@ -1732,12 +1732,14 @@ const showSentenceWordInfo = (word: string, event: MouseEvent | TouchEvent) => {
 }
 
 // 處理單字���化形式的函數
-const findWordByInflection = (word: string, words: WordData[]): WordData | undefined => {
+const findWordByInflection = (word: string, words: WordData[], exactOnly: boolean = false): WordData | undefined => {
   const lookupWord = word.toLowerCase();
 
   // 精確匹配
   let foundWord = words.find(w => w.word.toLowerCase() === lookupWord);
   if (foundWord) return foundWord;
+
+  if (exactOnly) return undefined;
 
   // 處理不規則變化形式
   const irregularForms: { [key: string]: string } = {
@@ -1988,25 +1990,42 @@ const showOptionWordInfo = async (word: string, event: MouseEvent | TouchEvent) 
   }
 
   try {
-    // 統一從詞庫中查找該單字的資訊，不論是否為正確答案
+    let finalFoundWord: WordData | undefined = undefined;
+
+    // Phase 1: Exact Match Search across all levels
     for (let level = 1; level <= 6; level++) {
       const words = await loadWordData(level);
-
-      // 使用變化形式處理函數
-      const foundWord = findWordByInflection(word, words);
-
+      const foundWord = findWordByInflection(word, words, true); // Use exactOnly flag
       if (foundWord) {
-        wordInfo.value = {
-          word: word,
-          definition: foundWord.chineseMeaning || '無資料',
-          etymology: foundWord.root || '無資料',
-          example: foundWord.example1 || foundWord.example2 || '無資料',
-          show: true,
-          x: clientX,
-          y: clientY - 100
-        };
-        return;
+        finalFoundWord = foundWord;
+        break; // Exit loop on first exact match
       }
+    }
+
+    // Phase 2: Inflection Match Search (if no exact match was found)
+    if (!finalFoundWord) {
+      for (let level = 1; level <= 6; level++) {
+        const words = await loadWordData(level);
+        const foundWord = findWordByInflection(word, words, false); // Allow inflection search
+        if (foundWord) {
+          finalFoundWord = foundWord;
+          break; // Exit loop on first inflection match
+        }
+      }
+    }
+
+    // Display result
+    if (finalFoundWord) {
+      wordInfo.value = {
+        word: word,
+        definition: finalFoundWord.chineseMeaning || '無資料',
+        etymology: finalFoundWord.root || '無資料',
+        example: finalFoundWord.example1 || finalFoundWord.example2 || '無資料',
+        show: true,
+        x: clientX,
+        y: clientY - 100
+      };
+      return;
     }
 
     // 如果在任何級別都找不到單詞，顯示"無資料"
