@@ -7,7 +7,7 @@
       <p style="color: var(--mdui-color-on-surface-variant); margin: 16px 0;">
         正在為你量身定制個性化題目
       </p>
-      <mdui-linear-progress indeterminate></mdui-linear-progress>
+      <mdui-circular-progress indeterminate style="display: block; margin: 16px auto; width: 48px; height: 48px;"></mdui-circular-progress>
       <br>
       <mdui-button
         variant="text"
@@ -40,11 +40,11 @@
         <div style="padding: 24px; border-radius: 12px; margin-bottom: 24px; text-align: center;">
           <p style="font-size: 1.25rem; line-height: 1.75rem; margin: 0;" ref="sentenceElement">
             <span v-for="(part, index) in sentenceParts" :key="index"
-                  :class="{'blank-placeholder': part.type === 'blank', 'hover-word': part.type === 'word' && showAnswer}"
-                  @mouseenter="part.type === 'word' && showAnswer ? showOptionWordInfo(part.text, $event) : null"
-                  @mouseleave="part.type === 'word' && showAnswer ? hideWordInfo() : null"
-                  @click="part.type === 'word' && showAnswer ? showOptionWordInfo(part.text, $event) : null"
-                  @touchstart="part.type === 'word' && showAnswer ? showOptionWordInfo(part.text, $event) : null">
+                  :class="{'blank-placeholder': part.type === 'blank', 'hover-word': (part.type === 'word' || part.type === 'hover-word') && showAnswer}"
+                  @mouseenter="(part.type === 'word' || part.type === 'hover-word') && showAnswer ? showOptionWordInfo(part.text, $event) : null"
+                  @mouseleave="(part.type === 'word' || part.type === 'hover-word') && showAnswer ? hideWordInfo() : null"
+                  @click="(part.type === 'word' || part.type === 'hover-word') && showAnswer ? showOptionWordInfo(part.text, $event) : null"
+                  @touchstart="(part.type === 'word' || part.type === 'hover-word') && showAnswer ? showOptionWordInfo(part.text, $event) : null">
               <span v-if="part.type === 'text'">{{ part.text }}</span>
               <strong v-else-if="part.type === 'blank'" style="color: var(--mdui-color-primary); text-decoration: underline;">{{ part.text }}</strong>
               <span v-else>{{ part.text }}</span>
@@ -464,90 +464,84 @@ const parseCSVAdvanced = (text: string): string[][] => {
   return result;
 }
 
-// Function to make API calls with or without API key
+// 解析AI響應中的問題
+const parseQuestionsFromResponse = (generatedText: string): { sentence: string; correctAnswer: string }[] => {
+  // 清理和解析CSV響應
+  let cleanedText = generatedText.trim()
+
+  // 如果響應包含代碼塊標記，移除它們
+  if (cleanedText.startsWith('```')) {
+    cleanedText = cleanedText.replace(/```\n?/, '').replace(/```\n?/, '')
+  }
+
+  // 使用更強大的CSV解析方法
+  const csvRows = parseCSVAdvanced(cleanedText);
+  const questionsData: { sentence: string; correctAnswer: string }[] = [];
+
+  for (const row of csvRows) {
+    if (row.length >= 2) {
+      let sentence = row[0];
+      let answer = row[1];
+
+      // 去除句子和答案兩端的引號
+      if (sentence.startsWith('"') && sentence.endsWith('"')) {
+        sentence = sentence.slice(1, -1);
+      }
+      if (answer.startsWith('"') && answer.endsWith('"')) {
+        answer = answer.slice(1, -1);
+      }
+
+      // 去除可能的多餘空格
+      sentence = sentence.trim();
+      answer = answer.trim();
+
+      if (sentence && answer) {
+        questionsData.push({ sentence, correctAnswer: answer });
+      }
+    }
+  }
+
+  return questionsData;
+}
+
+// Function to make API calls with API key only (anonymous mode removed)
 const makeApiCall = async (data: any) => {
   const storedEncryptedApiKey = localStorage.getItem('englishPracticeApiKey')
 
-  if (storedEncryptedApiKey) {
-    try {
-      const decryptedApiKey = decryptApiKey(storedEncryptedApiKey)
-      if (decryptedApiKey) {
-        // Use authenticated API with decrypted key
-        return await axios.post('https://gen.pollinations.ai/v1/chat/completions', data, {
-          headers: {
-            'Authorization': `Bearer ${decryptedApiKey}`,
-            'Content-Type': 'application/json'
-          }
-        })
-      }
-    } catch (error) {
-      console.error('使用儲存的API金鑰時發生錯誤:', error)
-      // 提示用戶API金鑰可能無效
-      console.warn('API金鑰可能無效，將嘗試使用匿名API');
-    }
+  if (!storedEncryptedApiKey) {
+    throw new Error('API金鑰未設定。請在設定中提供有效的API金鑰。');
   }
 
-  // Use anonymous API if no valid key is available
-  // Convert POST data to GET parameters for anonymous API
-  const message = data.messages?.[data.messages.length - 1]?.content || 'Hello';
-  // Use the selected model from localStorage, fallback to 'nova-micro' if not set
-  let model = data.model || localStorage.getItem('selectedAIModel') || 'nova-micro';
-  // Ensure the model name is in the correct format for the API
-  if (model === 'nova micro' || model === 'openai') {
-    model = 'nova-micro';
-  }
-
-  // For anonymous API, we need to return a response object that matches the authenticated API response format
   try {
-    // Try the new endpoint format as you specified: https://gen.pollinations.ai/text/{prompt}?model=nova-micro
-    // However, putting the prompt in the URL path can cause issues with special characters
-    // So we'll use the query parameter approach which is safer
-    const response = await axios.get(`https://gen.pollinations.ai/text?prompt=${encodeURIComponent(message)}&model=${model}`);
-
-    // Transform the response to match the format expected by the rest of the code
-    return {
-      data: {
-        choices: [{
-          message: {
-            content: response.data
-          }
-        }]
-      }
+    const decryptedApiKey = decryptApiKey(storedEncryptedApiKey);
+    if (!decryptedApiKey) {
+      throw new Error('API金鑰解密失敗');
     }
+
+    // Use authenticated API with decrypted key
+    return await axios.post('https://gen.pollinations.ai/v1/chat/completions', data, {
+      headers: {
+        'Authorization': `Bearer ${decryptedApiKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
   } catch (error) {
-    console.error('新的匿名API調用失敗:', error);
-    // If the new endpoint fails, try the original working endpoint as fallback
-    try {
-      const response = await axios.post('https://text.pollinations.ai/openai', {
-        messages: [
-          {
-            role: 'user',
-            content: message
-          }
-        ],
-        model: model.replace('nova-micro', 'nova micro'), // Convert back for the old API
-        max_tokens: 4000
-      });
+    console.error('API調用失敗:', error);
 
-      // Transform the response to match the format expected by the rest of the code
-      return {
-        data: {
-          choices: [{
-            message: {
-              content: response.data.choices[0].message.content
-            }
-          }]
-        }
-      }
-    } catch (fallbackError) {
-      console.error('後備匿名API調用也失敗了:', fallbackError);
-      // 抛出包含詳細錯誤信息的錯誤
-      let errorMessage = 'API調用失敗';
-      if (fallbackError instanceof Error) {
-        errorMessage += `: ${fallbackError.message}`;
-      }
-      throw new Error(errorMessage);
+    // 提供更詳細的錯誤信息
+    let errorMessage = 'API調用失敗';
+    if (error instanceof Error) {
+      errorMessage += `: ${error.message}`;
     }
+
+    // 如果是驗證錯誤，提示用戶檢查API金鑰
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      errorMessage = 'API金鑰無效，請檢查並重新設定。';
+    } else if (axios.isAxiosError(error) && error.response?.status === 429) {
+      errorMessage = 'API請求次數超限，請稍後再試。';
+    }
+
+    throw new Error(errorMessage);
   }
 }
 
@@ -640,6 +634,7 @@ onMounted(async () => {
       await loadExistingQuestions()
     } else {
       // 如果沒有對應級別的儲存題目，觸發題目生成流程
+      showAIGenerator.value = true; // 確保顯示加載狀態
       await generateLocalQuestions(level);
     }
   } else {
@@ -697,6 +692,7 @@ const startInfiniteMode = async (level: number) => {
   if (hasStoredQuestions.value) {
     await loadExistingQuestions();
   } else {
+    showAIGenerator.value = true; // 確保顯示加載狀態
     await generateLocalQuestions(level);
   }
 }
@@ -784,11 +780,8 @@ const loadMoreQuestions = async () => {
       console.log(`通過API成功加載了 ${processedQuestions.length} 道新題目，總題目數：${questions.value.length}`);
     } catch (apiError) {
       console.error('API題目生成也失敗:', apiError);
-      // 如果API生成也失敗，使用備用題目
-      const basicBackupQuestions = getBackupQuestions();
-      const backupQuestionsWithOptions = await addOptionsToQuestions(basicBackupQuestions, currentLevel.value);
-      questions.value = [...questions.value, ...backupQuestionsWithOptions];
-      console.log(`使用備用題目加載了 ${backupQuestionsWithOptions.length} 道題目`);
+      // 如果API生成也失敗，提示用戶檢查API金鑰
+      throw new Error('題目生成失敗，請檢查API金鑰設定並重試。');
     }
   } finally {
     isGeneratingMoreQuestions.value = false;
@@ -835,53 +828,24 @@ CRITICAL: The sentence must contain "____" (4 underscores) where the target word
 
 Generate exactly ${words.length} sentences, one for each word provided.`
 
-  const response = await makeApiCall({
-    messages: [
-      {
-        role: 'user',
-        content: prompt
-      }
-    ],
-    model: localStorage.getItem('selectedAIModel') || 'nova-micro',
-    max_tokens: 4000
-  })
-
-  const generatedText = response.data.choices[0].message.content
-
-  // 清理和解析CSV響應
-  let cleanedText = generatedText.trim()
-
-  // 如果響應包含代碼塊標記，移除它們
-  if (cleanedText.startsWith('```')) {
-    cleanedText = cleanedText.replace(/```\n?/, '').replace(/```\n?/, '')
+  let response;
+  try {
+    response = await makeApiCall({
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      model: localStorage.getItem('selectedAIModel') || 'nova-micro',
+      max_tokens: 4000
+    })
+  } catch (error) {
+    console.error('AI題目生成API調用失敗:', error);
+    throw error; // 重新拋出錯誤讓上層處理
   }
 
-  // 使用更強大的CSV解析方法
-  const csvRows = parseCSVAdvanced(cleanedText);
-  const questionsData: { sentence: string; correctAnswer: string }[] = [];
-
-  for (const row of csvRows) {
-    if (row.length >= 2) {
-      let sentence = row[0];
-      let answer = row[1];
-
-      // 去除句子和答案兩端的引號
-      if (sentence.startsWith('"') && sentence.endsWith('"')) {
-        sentence = sentence.slice(1, -1);
-      }
-      if (answer.startsWith('"') && answer.endsWith('"')) {
-        answer = answer.slice(1, -1);
-      }
-
-      // 去除可能的多餘空格
-      sentence = sentence.trim();
-      answer = answer.trim();
-
-      if (sentence && answer) {
-        questionsData.push({ sentence, correctAnswer: answer });
-      }
-    }
-  }
+  const questionsData = parseQuestionsFromResponse(response.data.choices[0].message.content);
 
   if (questionsData.length > 0) {
     // 由于AI只生成句子和正确答案，我们需要从词库中获取单词信息和生成选项
@@ -931,6 +895,7 @@ Generate exactly ${words.length} sentences, one for each word provided.`
 // 使用本地詞彙庫生成題目（從CSV中隨機選擇單字）
 const generateLocalQuestions = async (level: number) => {
   isGenerating.value = true
+  showAIGenerator.value = true
 
   try {
     console.log(`開始從級別 ${level} 的詞庫生成題目...`)
@@ -977,18 +942,9 @@ const generateLocalQuestions = async (level: number) => {
       }
       alert(errorMessage);
 
-      // 最後回退到備用題目
-      try {
-        const basicBackupQuestions = getBackupQuestions();
-        const backupQuestionsWithOptions = await addOptionsToQuestions(basicBackupQuestions, null);
-        questions.value = backupQuestionsWithOptions;
-        showAIGenerator.value = false;
-        startQuiz();
-      } catch (finalError) {
-        console.error('所有題目生成方法都失敗了:', finalError);
-        alert('所有題目生成方法都失敗了，請聯繫開發者或稍後再試。');
-        showAIGenerator.value = false;
-      }
+      // 由於已移除匿名模式，直接提示用戶檢查API金鑰
+      alert('題目生成失敗，請檢查API金鑰設定後再試。');
+      showAIGenerator.value = false;
     }
   } finally {
     isGenerating.value = false;
@@ -998,6 +954,7 @@ const generateLocalQuestions = async (level: number) => {
 // 使用pollinations.ai API生成題目（保持原有的功能作為備用）
 const generateAIPQuestions = async () => {
   isGenerating.value = true
+  showAIGenerator.value = true
 
   try {
     // 從CSV中隨機選擇50個單字作為基礎
@@ -1053,53 +1010,24 @@ CRITICAL: The sentence must contain "____" (4 underscores) where the target word
 
 Generate exactly ${selectedWords.length} sentences, one for each word provided.`
 
-    const response = await makeApiCall({
-      messages: [
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      model: localStorage.getItem('selectedAIModel') || 'nova-micro',
-      max_tokens: 4000
-    })
-
-    const generatedText = response.data.choices[0].message.content
-
-    // 清理和解析CSV響應
-    let cleanedText = generatedText.trim()
-
-    // 如果響應包含代碼塊標記，移除它們
-    if (cleanedText.startsWith('```')) {
-      cleanedText = cleanedText.replace(/```\n?/, '').replace(/```\n?/, '')
+    let response;
+    try {
+      response = await makeApiCall({
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        model: localStorage.getItem('selectedAIModel') || 'nova-micro',
+        max_tokens: 4000
+      })
+    } catch (error) {
+      console.error('API題目生成失敗:', error);
+      throw error; // 重新拋出錯誤讓上層處理
     }
 
-    // 使用更強大的CSV解析方法
-    const csvRows = parseCSVAdvanced(cleanedText);
-    const questionsData: { sentence: string; correctAnswer: string }[] = [];
-
-    for (const row of csvRows) {
-      if (row.length >= 2) {
-        let sentence = row[0];
-        let answer = row[1];
-
-        // 去除句子和答案兩端的引號
-        if (sentence.startsWith('"') && sentence.endsWith('"')) {
-          sentence = sentence.slice(1, -1);
-        }
-        if (answer.startsWith('"') && answer.endsWith('"')) {
-          answer = answer.slice(1, -1);
-        }
-
-        // 去除可能的多餘空格
-        sentence = sentence.trim();
-        answer = answer.trim();
-
-        if (sentence && answer) {
-          questionsData.push({ sentence, correctAnswer: answer });
-        }
-      }
-    }
+    const questionsData = parseQuestionsFromResponse(response.data.choices[0].message.content);
 
     if (questionsData.length > 0) {
       // 由于AI只生成句子和正确答案，我们需要从词库中获取单词信息和生成选项
@@ -1194,18 +1122,9 @@ Generate exactly ${selectedWords.length} sentences, one for each word provided.`
     }
     alert(errorMessage);
 
-    // 如果API調用失敗，使用備用題目
-    try {
-      const basicBackupQuestions = getBackupQuestions();
-      const backupQuestionsWithOptions = await addOptionsToQuestions(basicBackupQuestions, currentLevel.value);
-      questions.value = backupQuestionsWithOptions;
-      showAIGenerator.value = false;
-      startQuiz();
-    } catch (finalError) {
-      console.error('API生成和備用題目都失敗了:', finalError);
-      alert('題目生成完全失敗，請檢查網路連線或稍後再試。\n錯誤詳情: ' + (finalError as Error).message);
-      showAIGenerator.value = false;
-    }
+    // 由於已移除匿名模式，直接提示用戶檢查API金鑰
+    alert('題目生成失敗，請檢查API金鑰設定後再試。');
+    showAIGenerator.value = false;
   } finally {
     isGenerating.value = false;
   }
@@ -1382,52 +1301,64 @@ interface SentencePart {
 const sentenceParts = computed<SentencePart[]>(() => {
   if (!currentQuestion.value) return []
 
-  // 根據是否已顯示答案來決定句子內容
-  let sentence = currentQuestion.value.sentence;
-  if (showAnswer.value) {
-    // 確保只替換第一個空白占位符
-    sentence = sentence.replace('____', currentQuestion.value.correctAnswer);
-  }
+  const originalSentence = currentQuestion.value.sentence;
+  // 根據是否已顯示答案來決定空白占位符的顯示內容
+  const displayedSentence = showAnswer.value
+    ? originalSentence.replace(/____/g, currentQuestion.value.correctAnswer)
+    : originalSentence;
 
+  // 先按空白占位符分割原始句子，以正確識別空白位置
+  const segments = originalSentence.split(/(____)/);
   const parts: SentencePart[] = [];
 
-  // 使用更安全的正則表達式來分割句子 - 匹配空白占位符、單詞和其他字符
-  // 這個正則表達式會匹配：
-  // 1. 空白占位符 '____'
-  // 2. 單詞（字母組合，可能包含撇號）
-  // 3. 其他字符（包括空格、標點符號等）
-  const regex = /(__+)|([a-zA-Z]+(?:'[a-zA-Z]+)?)|([^a-zA-Z_]+)/g;
-  let lastIndex = 0;
+  segments.forEach(segment => {
+    if (segment === '____') {
+      // 根據是否顯示答案來決定空白部分的顯示內容
+      const blankText = showAnswer.value ? currentQuestion.value.correctAnswer : '____';
+      parts.push({
+        type: showAnswer.value ? 'hover-word' : 'blank', // 當顯示答案時，正確答案也應可點擊
+        text: blankText
+      });
+    } else {
+      // 對非空白部分進行詞語分割，保留所有空格和標點
+      let lastIndex = 0;
+      // 使用更精確的正則表達式來匹配單詞，同時捕獲空格和標點
+      const wordRegex = /([a-zA-Z]+(?:'[a-zA-Z]+)?)|(\s+)|([^\w\s])/g;
+      let match;
 
-  let match;
-  while ((match = regex.exec(sentence)) !== null) {
-    // 添加匹配前的文本（如果有的話）
-    if (match.index > lastIndex) {
-      const textBefore = sentence.substring(lastIndex, match.index);
-      if (textBefore) {
-        parts.push({ type: 'text', text: textBefore });
+      while ((match = wordRegex.exec(segment)) !== null) {
+        // 添加匹配前的文本（通常是空格或標點）
+        if (match.index > lastIndex) {
+          const textBefore = segment.substring(lastIndex, match.index);
+          if (textBefore) {
+            parts.push({ type: 'text', text: textBefore });
+          }
+        }
+
+        // 添加匹配的內容
+        if (match[1]) { // 單詞（可能包含撇號）
+          parts.push({
+            type: showAnswer.value ? 'hover-word' : 'word',
+            text: match[1]
+          });
+        } else if (match[2]) { // 空格
+          parts.push({ type: 'text', text: match[2] });
+        } else if (match[3]) { // 標點符號
+          parts.push({ type: 'text', text: match[3] });
+        }
+
+        lastIndex = match.index + match[0].length;
+      }
+
+      // 添加最後剩餘的文本
+      if (lastIndex < segment.length) {
+        const remainingText = segment.substring(lastIndex);
+        if (remainingText) {
+          parts.push({ type: 'text', text: remainingText });
+        }
       }
     }
-
-    // 添加匹配的內容
-    if (match[1]) { // 空白占位符
-      parts.push({ type: 'blank', text: match[1] });
-    } else if (match[2]) { // 單詞（可能包含撇號）
-      parts.push({ type: 'word', text: match[2] });
-    } else if (match[3]) { // 其他字符（包括空格、標點等）
-      parts.push({ type: 'text', text: match[3] });
-    }
-
-    lastIndex = match.index + match[0].length;
-  }
-
-  // 添加最後剩餘的文本（包括空格、標點和其他字符）
-  if (lastIndex < sentence.length) {
-    const remainingText = sentence.substring(lastIndex);
-    if (remainingText) {
-      parts.push({ type: 'text', text: remainingText });
-    }
-  }
+  });
 
   return parts;
 });
@@ -1471,27 +1402,38 @@ const askLLM = async () => {
 句子：${currentQuestion.value.sentence}
 選項：${currentQuestion.value.options?.join(', ') || '（未提供選項）'}
 
-請根據句子的語法、語意和一般常識，判斷哪個選項最適合填入空格讓句子通順且有意義。
+請根據句子的語法、語意、一般常識，以及**真實英語的使用習慣**，判斷哪個選項最適合填入空格，讓句子不僅通順，而且**自然、地道**。
 
 注意：
 - 只根據題目中明確給出的句子和選項判斷，不要添加任何未出現的資訊或假設上下文。
-- 優先選擇語義最符合句子上下文的選項，即使多個選項在語法上都可行。
-- 如果有多個選項都合理，請指出最符合語境的那個選項，並說明其他選項為什麼不太合適。
-- 如果所有選項都不合邏輯、語法錯誤、語義不夠自然，或明顯不符合常識，請說「沒有正確答案」。
+- 如果有多個選項在語法、常識和語言習慣上都同樣合理（例如 "The monkey ate a _____." 選項為 banana, apple, pineapple），請將它們**全部列出**作為正確答案，因為這些選項在真實語言中都自然且常見。
+- 如果多個選項語法上可行，但其中某些在語境、搭配或常見程度上明顯較弱（例如用詞彆扭、較少使用、或不符合領域慣例），則選擇最自然的那一個，並說明其他選項為何不夠恰當。
+- 請特別注意：**語法正確 ≠ 語用自然**。有些選項單獨看意思合理，但和句子其他詞搭配起來卻不常見、不自然，甚至是生造詞。例如：
+  - 在 "The _____ baby slept..." 中，"infant" 雖然意思是嬰兒，但 "infant baby" 語義重複，母語者通常只說 "the baby" 或 "the infant"，不會兩者連用。
+  - 在商業或科技語境中，"digital-friendly" 是生造詞；真實英語會說 "a digital business model"、"digitize its operations" 或 "more digitally oriented"。
+- 判斷時請自問：「**母語者會這樣說嗎？**」如果答案是否定的，即使句子勉強可懂，也不該視為正確答案。
+- 如果所有選項都不合邏輯、語法錯誤、語義不自然（包括搭配生硬、用詞不地道、或明顯違背常識），請說「沒有正確答案」。
 - 如果句子本身不清楚（例如沒有明顯空格、句子不完整、意思模糊），請說「題目資訊不足，無法判斷」。
 
-請用簡單、自然的語言解釋你的判斷，幫助學生理解什麼是「語法正確」和「語意合理」，並特別強調語義匹配的重要性。`;
+請用簡單、自然的語言解釋你的判斷，幫助學生理解：
+真正合適的答案，不僅要「語法正確」，更要「說得像真人」——這包括用詞搭配、領域慣例和語言的自然流暢度。`;
 
-    const response = await makeApiCall({
-      messages: [
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      model: localStorage.getItem('selectedAIModel') || 'nova-micro',
-      max_tokens: 1000
-    });
+    let response;
+    try {
+      response = await makeApiCall({
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        model: localStorage.getItem('selectedAIModel') || 'nova-micro',
+        max_tokens: 1000
+      });
+    } catch (apiError) {
+      console.error('向 LLM 詢問時API調用失敗:', apiError);
+      throw apiError; // 重新拋出錯誤讓catch處理
+    }
 
     llmResponse.value = response.data.choices[0].message.content;
   } catch (error) {
@@ -1681,14 +1623,16 @@ const restart = async () => {
   // 重置 LLM 驗證狀態
   resetLLMVerification()
 
-  // 重新載入當前級別的題目或生成新題目
+  // 重新開始時總是生成新的題目，而不是載入現有的
   if (currentLevel.value) {
-    await checkStoredQuestions(currentLevel.value);
-    if (hasStoredQuestions.value) {
-      await loadExistingQuestions();
-    } else {
-      await generateLocalQuestions(currentLevel.value);
-    }
+    // 清除儲存的題目以確保生成新題目
+    localStorage.removeItem('englishQuestions');
+    localStorage.removeItem('questionsTimestamp');
+    localStorage.removeItem('questionSource');
+    localStorage.removeItem('questionLevel');
+    localStorage.removeItem('wrongAnswers');
+
+    await generateLocalQuestions(currentLevel.value);
   } else {
     // 如果沒有當前級別，可能需要導航回主頁面或顯示錯誤
     console.error('缺少級別資訊，無法重新開始');
@@ -1787,7 +1731,7 @@ const showSentenceWordInfo = (word: string, event: MouseEvent | TouchEvent) => {
   }
 }
 
-// 處理單字變化形式的函數
+// 處理單字���化形式的函數
 const findWordByInflection = (word: string, words: WordData[]): WordData | undefined => {
   const lookupWord = word.toLowerCase();
 
@@ -2110,7 +2054,7 @@ const addOptionsToQuestions = async (basicQuestions: Omit<Question, 'options'>[]
       }
     }
 
-    // 為每個問題生成選項
+    // 為每個��題生成選項
     return basicQuestions.map((q) => {
       // 找到與正確答案相同詞性的詞彙作為干擾選項
       const correctWordData = allWords.find(w => w.word.toLowerCase() === q.correctAnswer.toLowerCase());
