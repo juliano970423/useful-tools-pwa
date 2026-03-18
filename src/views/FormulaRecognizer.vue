@@ -1,0 +1,729 @@
+<template>
+  <div>
+    <NavBar />
+
+    <main style="padding: 16px; max-width: 1200px; margin: 0 auto;">
+      <h1 style="text-align: center; margin-bottom: 24px;">手寫公式識別</h1>
+
+            <div class="main-layout">
+        <!-- 繪圖區域 -->
+        <mdui-card class="canvas-card">
+          <div style="padding: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h3 style="margin: 0;">繪製公式</h3>
+              <div style="display: flex; gap: 8px;">
+                <mdui-button @click="clearCanvas" variant="outlined" size="small">清除</mdui-button>
+                <mdui-button @click="undoLastStroke" variant="outlined" size="small">撤銷</mdui-button>
+              </div>
+            </div>
+
+            <div class="canvas-container">
+              <!-- API 配置按鈕（右上角） -->
+              <mdui-button-icon
+                @click="toggleConfigPopover"
+                icon="settings"
+                variant="tonal"
+                class="settings-btn"
+                title="API 配置"
+              ></mdui-button-icon>
+
+              <canvas
+                ref="canvasRef"
+                @pointerdown="startDrawing"
+                @pointermove="draw"
+                @pointerup="stopDrawing"
+                @pointerleave="stopDrawing"
+                @pointercancel="stopDrawing"
+                style="touch-action: none;"
+              ></canvas>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 12px;">
+              <mdui-button @click="recognizeFormula" variant="filled" :loading="isRecognizing" style="flex: 1;">
+                識別公式
+              </mdui-button>
+              <mdui-button @click="downloadImage" variant="tonal">下載圖片</mdui-button>
+            </div>
+          </div>
+        </mdui-card>
+
+        <!-- 預覽區域 -->
+        <mdui-card class="preview-card">
+          <div style="padding: 16px; height: 100%; display: flex; flex-direction: column;">
+            <h3 style="margin: 0 0 12px 0;">識別結果</h3>
+
+            <!-- LaTeX 預覽 -->
+            <div
+              ref="latexPreviewRef"
+              class="latex-preview"
+              style="flex: 1; margin-bottom: 12px;"
+            >
+              <span v-if="!result.latex" style="color: #999; font-size: 14px;">繪製公式後點擊識別</span>
+            </div>
+
+            <!-- LaTeX 代碼 -->
+            <mdui-text-field
+              :value="result.latex"
+              @input="result.latex = $event.target.value"
+              readonly
+              label="LaTeX 代碼"
+              variant="outlined"
+              full-width
+              multiline
+              :rows="3"
+            ></mdui-text-field>
+
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+              <mdui-button @click="copyLatex" variant="outlined" style="flex: 1;">複製 LaTeX</mdui-button>
+              <mdui-button @click="downloadLatexImage" variant="tonal" style="flex: 1;">下載圖片</mdui-button>
+            </div>
+
+            <div v-if="result.confidence" style="margin-top: 8px; font-size: 12px; color: #666; text-align: center;">
+              置信度：{{ Math.round(result.confidence * 100) }}%
+            </div>
+          </div>
+        </mdui-card>
+      </div>
+      <mdui-dialog ref="configDialogRef" headline="API 配置">
+        <div style="display: grid; gap: 12px; padding: 16px;">
+          <mdui-text-field
+            :value="tempConfig.baseUrl"
+            @input="tempConfig.baseUrl = $event.target.value"
+            label="API Base URL"
+            placeholder="https://open.bigmodel.cn/api/paas/v4"
+            variant="outlined"
+            full-width
+          ></mdui-text-field>
+
+          <mdui-text-field
+            :value="tempConfig.apiKey"
+            @input="tempConfig.apiKey = $event.target.value"
+            label="API Key"
+            type="password"
+            placeholder="sk-..."
+            variant="outlined"
+            full-width
+          ></mdui-text-field>
+
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <mdui-select
+              :value="tempConfig.model"
+              @change="tempConfig.model = $event.target.value"
+              label="模型"
+              variant="outlined"
+              style="flex: 1;"
+              placeholder="選擇或輸入模型"
+            >
+              <mdui-menu-item
+                v-for="model in availableModels"
+                :key="model.id"
+                :value="model.id"
+              >{{ model.name || model.id }}</mdui-menu-item>
+              <mdui-menu-item value="custom">自定義...</mdui-menu-item>
+            </mdui-select>
+
+            <mdui-button-icon
+              @click="loadModels"
+              icon="refresh"
+              variant="tonal"
+              title="刷新模型列表"
+            ></mdui-button-icon>
+          </div>
+
+          <mdui-text-field
+            v-if="tempConfig.model === 'custom'"
+            :value="tempCustomModel"
+            @input="tempCustomModel = $event.target.value"
+            label="自定義模型名稱"
+            placeholder="glm-4.6v-flash"
+            variant="outlined"
+            full-width
+            helper-text="常用：glm-4.6v-flash（免費視覺模型）"
+          ></mdui-text-field>
+
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <mdui-checkbox
+              :checked="tempConfig.requireStylus"
+              @change="tempConfig.requireStylus = $event.target.checked"
+            ></mdui-checkbox>
+            <span style="font-size: 14px;">僅允許觸控筆輸入</span>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 8px;">
+            <mdui-button @click="closeConfig" variant="outlined" style="flex: 1;">取消</mdui-button>
+            <mdui-button @click="saveConfigAndClose" variant="filled" style="flex: 1;">保存配置</mdui-button>
+          </div>
+        </div>
+      </mdui-dialog>
+
+      <!-- 錯誤訊息 -->
+      <mdui-snackbar ref="snackbarRef" type="error">{{ errorMessage }}</mdui-snackbar>
+    </main>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, nextTick, watch } from 'vue'
+import NavBar from '@/components/NavBar.vue'
+import { FormulaRecognizerService, type FormulaRecognizerConfig } from '@/services/formulaRecognizer'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
+// mdui 組件已在 main.ts 中全局導入，無需重複導入
+
+// 配置
+const config = ref<FormulaRecognizerConfig>({
+  baseUrl: 'https://open.bigmodel.cn/api/paas/v4',  // 智譜 AI 預設
+  apiKey: '',
+  model: '',
+  requireStylus: false
+})
+const customModel = ref('')  // 用戶手動輸入的模型名稱
+
+// Dialog 臨時配置（用於取消時恢復）
+const tempConfig = ref<FormulaRecognizerConfig>({
+  baseUrl: '',
+  apiKey: '',
+  model: '',
+  requireStylus: false
+})
+const tempCustomModel = ref('')
+
+// 模型列表
+interface ModelInfo {
+  id: string
+  name?: string
+}
+const availableModels = ref<ModelInfo[]>([])
+
+// 畫布相關
+const canvasRef = ref<HTMLCanvasElement | null>(null)
+const ctx = ref<CanvasRenderingContext2D | null>(null)
+const isDrawing = ref(false)
+const strokes = ref<Array<Array<{ x: number; y: number }>>>([])
+const currentStroke = ref<Array<{ x: number; y: number }>>([])
+
+// 識別相關
+const isRecognizing = ref(false)
+const result = ref({ latex: '', confidence: undefined })
+const errorMessage = ref('')
+const latexPreviewRef = ref<HTMLElement | null>(null)
+const configDialogRef = ref(null)
+const snackbarRef = ref(null)
+
+// 可用模型（computed）
+
+// 載入模型列表
+const loadModels = async () => {
+  if (!config.value.apiKey) {
+    availableModels.value = []
+    return
+  }
+
+  try {
+    const service = new FormulaRecognizerService(config.value)
+    const models = await service.listModels()
+
+    if (models.length > 0) {
+      availableModels.value = models
+    } else {
+      console.log('未找到任何模型')
+      availableModels.value = []
+    }
+  } catch (error) {
+    console.error('載入模型列表失敗:', error)
+    availableModels.value = []
+  }
+}
+
+// 監聽 API Key 變化，自動載入模型列表
+watch(() => config.value.apiKey, (newKey, oldKey) => {
+  if (newKey !== oldKey) {
+    availableModels.value = []
+  }
+  if (newKey && newKey.length > 10) {
+    loadModels()
+  }
+})
+
+// 監聽 Base URL 變化，重新載入模型列表
+watch(() => config.value.baseUrl, (newUrl, oldUrl) => {
+  if (newUrl !== oldUrl) {
+    availableModels.value = []
+  }
+  if (config.value.apiKey) {
+    loadModels()
+  }
+})
+
+// 初始化
+onMounted(() => {
+  initCanvas()
+  loadConfig()
+})
+
+// 初始化畫布
+const initCanvas = () => {
+  const canvas = canvasRef.value
+  if (!canvas) return
+
+  const container = canvas.parentElement
+  if (!container) return
+
+  const rect = container.getBoundingClientRect()
+  // 設置 canvas 實際像素尺寸
+  canvas.width = rect.width || 600
+  canvas.height = 500
+
+  const context = canvas.getContext('2d')
+  if (!context) return
+
+  ctx.value = context
+  ctx.value.lineCap = 'round'
+  ctx.value.lineJoin = 'round'
+  ctx.value.lineWidth = 3
+  ctx.value.strokeStyle = '#000'
+
+  // 填充白色背景
+  ctx.value.fillStyle = '#ffffff'
+  ctx.value.fillRect(0, 0, canvas.width, canvas.height)
+}
+
+// 繪圖相關函數
+const getPointerPos = (e: PointerEvent | Touch): { x: number; y: number } => {
+  const canvas = canvasRef.value
+  if (!canvas) return { x: 0, y: 0 }
+
+  const rect = canvas.getBoundingClientRect()
+  const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+  const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+
+  return {
+    x: clientX - rect.left,
+    y: clientY - rect.top
+  }
+}
+
+const startDrawing = (e: PointerEvent) => {
+  e.preventDefault()
+
+  // 檢查是否為觸控筆模式
+  if (config.value.requireStylus) {
+    // pointerType: 'mouse' = 滑鼠/觸控板，'pen' = 觸控筆，'touch' = 手指/手掌
+    // 僅允許滑鼠和觸控筆，阻止手指/手掌
+    if (e.pointerType === 'touch') {
+      showError('請使用觸控筆繪圖')
+      return
+    }
+  }
+
+  isDrawing.value = true
+  const pos = getPointerPos(e)
+  currentStroke.value = [pos]
+}
+
+const draw = (e: PointerEvent) => {
+  e.preventDefault()
+  if (!isDrawing.value || !ctx.value) return
+
+  const pos = getPointerPos(e)
+  currentStroke.value.push(pos)
+
+  const lastPos = currentStroke.value[currentStroke.value.length - 2]
+  ctx.value.beginPath()
+  ctx.value.moveTo(lastPos.x, lastPos.y)
+  ctx.value.lineTo(pos.x, pos.y)
+  ctx.value.stroke()
+}
+
+const stopDrawing = () => {
+  if (!isDrawing.value) return
+  isDrawing.value = false
+
+  if (currentStroke.value.length > 0) {
+    strokes.value.push([...currentStroke.value])
+  }
+  currentStroke.value = []
+}
+
+// 清除畫布
+const clearCanvas = () => {
+  if (!ctx.value || !canvasRef.value) return
+
+  ctx.value.fillStyle = '#ffffff'
+  ctx.value.fillRect(0, 0, canvasRef.value.width, canvasRef.value.height)
+  strokes.value = []
+  currentStroke.value = []
+  result.value.latex = ''
+  result.value.confidence = undefined
+}
+
+// 撤銷
+const undoLastStroke = () => {
+  if (!ctx.value || !canvasRef.value || strokes.value.length === 0) return
+
+  strokes.value.pop()
+
+  // 重繪所有筆畫
+  ctx.value.fillStyle = '#ffffff'
+  ctx.value.fillRect(0, 0, canvasRef.value.width, canvasRef.value.height)
+
+  ctx.value.strokeStyle = '#000'
+  ctx.value.lineWidth = 3
+
+  strokes.value.forEach(stroke => {
+    if (stroke.length < 2) return
+
+    ctx.value.beginPath()
+    ctx.value.moveTo(stroke[0].x, stroke[0].y)
+
+    for (let i = 1; i < stroke.length; i++) {
+      ctx.value.lineTo(stroke[i].x, stroke[i].y)
+    }
+    ctx.value.stroke()
+  })
+}
+
+// 識別公式
+const recognizeFormula = async () => {
+  if (!canvasRef.value) return
+
+  if (!config.value.apiKey) {
+    showError('請先配置 API Key')
+    toggleConfigPopover()
+    return
+  }
+
+  isRecognizing.value = true
+  result.value.latex = ''
+
+  try {
+    // 如果有手動輸入模型名稱，優先使用；否則使用下拉選單選擇的模型
+    const model = customModel.value.trim() || config.value.model
+
+    if (!model) {
+      showError('請先選擇或輸入模型')
+      return
+    }
+
+    const service = new FormulaRecognizerService({
+      ...config.value,
+      model
+    })
+
+    const recognitionResult = await service.recognize(canvasRef.value)
+    result.value.latex = recognitionResult.latex
+    result.value.confidence = recognitionResult.confidence
+
+    // 渲染 LaTeX
+    await nextTick()
+    renderLatex(recognitionResult.latex)
+  } catch (error) {
+    let errorMsg = '識別失敗'
+    
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase()
+      
+      // 檢查常見的 API 錯誤
+      if (message.includes('429')) {
+        errorMsg = '請求過於頻繁（429），請稍後再試'
+      } else if (message.includes('401')) {
+        errorMsg = 'API Key 無效或已過期（401）'
+      } else if (message.includes('403')) {
+        errorMsg = '無權限訪問（403），請檢查 API Key 權限'
+      } else if (message.includes('404')) {
+        errorMsg = '模型不存在或 API 路徑錯誤（404）'
+      } else if (message.includes('500')) {
+        errorMsg = '服務器錯誤（500），請稍後再試'
+      } else if (message.includes('timeout')) {
+        errorMsg = '請求超時，請檢查網絡連接'
+      } else if (message.includes('network')) {
+        errorMsg = '網絡錯誤，請檢查網絡連接'
+      } else {
+        errorMsg = error.message
+      }
+    }
+    
+    showError(errorMsg)
+  } finally {
+    isRecognizing.value = false
+  }
+}
+
+// 渲染 LaTeX
+const renderLatex = (latex: string) => {
+  if (!latexPreviewRef.value) return
+
+  try {
+    katex.render(latex, latexPreviewRef.value, {
+      throwOnError: false,
+      displayMode: true,
+      fontSize: 1.5
+    })
+  } catch {
+    latexPreviewRef.value.textContent = latex
+  }
+}
+
+// 下載圖片
+const downloadImage = () => {
+  if (!canvasRef.value) return
+
+  const link = document.createElement('a')
+  link.download = 'formula.png'
+  link.href = canvasRef.value.toDataURL('image/png')
+  link.click()
+}
+
+// 複製 LaTeX
+const copyLatex = async () => {
+  if (!result.value.latex) {
+    showError('沒有可複製的內容')
+    return
+  }
+
+  try {
+    // 優先使用現代 API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(result.value.latex)
+      showError('已複製到剪貼簿')
+      return
+    }
+  } catch (err) {
+    console.warn('navigator.clipboard 失敗，嘗試降級方案:', err)
+  }
+
+  // 降級方案：使用 execCommand
+  try {
+    const textArea = document.createElement('textarea')
+    textArea.value = result.value.latex
+    
+    // 使 textarea 不可見
+    textArea.style.position = 'fixed'
+    textArea.style.top = '0'
+    textArea.style.left = '0'
+    textArea.style.width = '2em'
+    textArea.style.height = '2em'
+    textArea.style.padding = '0'
+    textArea.style.border = 'none'
+    textArea.style.outline = 'none'
+    textArea.style.boxShadow = 'none'
+    textArea.style.background = 'transparent'
+    textArea.style.opacity = '0'
+    
+    document.body.appendChild(textArea)
+    textArea.focus()
+    textArea.select()
+    
+    const successful = document.execCommand('copy')
+    document.body.removeChild(textArea)
+    
+    if (successful) {
+      showError('已複製到剪貼簿')
+    } else {
+      showError('複製失敗')
+    }
+  } catch (err) {
+    console.error('降級方案失敗:', err)
+    showError('複製失敗，請手動複製')
+  }
+}
+
+// 下載 LaTeX 預覽為圖片
+const downloadLatexImage = async () => {
+  if (!latexPreviewRef.value || !result.value.latex) {
+    showError('沒有可下載的內容')
+    return
+  }
+
+  try {
+    // 使用 html2canvas 或簡單的方法
+    // 這裡我們創建一個 SVG 來下載
+    const svgContent = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="800" height="200">
+        <foreignObject width="100%" height="100%">
+          <div xmlns="http://www.w3.org/1999/xhtml" style="padding: 20px; background: white; font-family: 'KaTeX_Main', serif;">
+            ${result.value.latex}
+          </div>
+        </foreignObject>
+      </svg>
+    `
+    
+    const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'formula.svg'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    
+    showError('已下載為 SVG 格式')
+  } catch (err) {
+    console.error('下載失敗:', err)
+    showError('下載失敗')
+  }
+}
+
+// 配置管理
+
+// 簡單的加密/解密函數（Base64 編碼，非安全加密，僅避免明文顯示）
+const encodeApiKey = (key: string): string => {
+  try {
+    return btoa(encodeURIComponent(key))
+  } catch {
+    return key
+  }
+}
+
+const decodeApiKey = (encoded: string): string => {
+  try {
+    return decodeURIComponent(atob(encoded))
+  } catch {
+    return encoded
+  }
+}
+
+const saveConfig = () => {
+  const configToSave = {
+    baseUrl: config.value.baseUrl,
+    apiKey: config.value.apiKey ? encodeApiKey(config.value.apiKey) : '',
+    model: config.value.model,
+    requireStylus: config.value.requireStylus,  // 保存觸控筆模式狀態
+    customModel: customModel.value  // 保存手動輸入的模型名稱
+  }
+  localStorage.setItem('formula-recognizer-config', JSON.stringify(configToSave))
+  // 保存後清空模型列表，下次載入時重新獲取
+  availableModels.value = []
+  showError('配置已保存')
+}
+
+const loadConfig = () => {
+  const saved = localStorage.getItem('formula-recognizer-config')
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved)
+      // 解密 API Key
+      if (parsed.apiKey) {
+        parsed.apiKey = decodeApiKey(parsed.apiKey)
+      }
+      // 載入配置
+      config.value = {
+        baseUrl: parsed.baseUrl || config.value.baseUrl,
+        apiKey: parsed.apiKey || '',
+        model: parsed.model || '',
+        requireStylus: parsed.requireStylus || false
+      }
+      // 載入手動輸入的模型名稱
+      if (parsed.customModel) {
+        customModel.value = parsed.customModel
+      }
+
+      // 載入配置後自動獲取模型列表
+      if (config.value.apiKey) {
+        setTimeout(() => loadModels(), 500)
+      }
+    } catch {
+      // ignore
+    }
+  }
+}
+
+// 顯示錯誤
+
+// 切換 Dialog 顯示
+const toggleConfigPopover = () => {
+  if (configDialogRef.value) {
+    // 打開 dialog 時，複製當前配置到臨時變量
+    if (!configDialogRef.value.open) {
+      tempConfig.value = { ...config.value }
+      tempCustomModel.value = customModel.value
+    }
+    configDialogRef.value.open = !configDialogRef.value.open
+  }
+}
+
+const closeConfig = () => {
+  if (configDialogRef.value) {
+    configDialogRef.value.open = false
+  }
+}
+
+const saveConfigAndClose = () => {
+  // 保存時，將臨時變量的值賦給正式配置
+  config.value = { ...tempConfig.value }
+  customModel.value = tempCustomModel.value
+  saveConfig()
+  closeConfig()
+}
+
+const showError = (message: string) => {
+  errorMessage.value = message
+  // 使用 nextTick 確保 DOM 更新後再開啟 snackbar
+  nextTick(() => {
+    const snackbar = snackbarRef.value as any
+    if (snackbar) {
+      snackbar.open = true
+    }
+  })
+}
+</script>
+
+<style scoped>
+/* 桌面佈局：左側繪圖，右側上下排列預覽和代碼 */
+.main-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.canvas-container {
+  position: relative;
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.settings-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+}
+
+canvas {
+  display: block;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+/* 預覽卡片 */
+.preview-card {
+  height: 100%;
+}
+
+.latex-preview {
+  padding: 24px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 150px;
+}
+
+/* 移動端佈局：垂直堆疊 */
+@media (max-width: 768px) {
+  .main-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  main {
+    padding: 8px;
+  }
+}
+</style>

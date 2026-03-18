@@ -23,6 +23,9 @@
             <router-link to="/english-training" style="text-decoration: none; color: inherit;">
               <mdui-menu-item>英語訓練</mdui-menu-item>
             </router-link>
+            <router-link to="/formula-recognizer" style="text-decoration: none; color: inherit;">
+              <mdui-menu-item>手寫公式識別</mdui-menu-item>
+            </router-link>
           </mdui-menu>
         </mdui-dropdown>
         <mdui-button-icon

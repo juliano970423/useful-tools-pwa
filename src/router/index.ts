@@ -6,6 +6,7 @@ import FocusTraining from '@/views/FocusTraining.vue'
 import StroopTestPage from '@/views/StroopTestPage.vue'
 import MemoryCardsPage from '@/views/MemoryCardsPage.vue'
 import TimerDebugPage from '@/views/TimerDebugPage.vue'
+import FormulaRecognizer from '@/views/FormulaRecognizer.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -56,6 +57,11 @@ const router = createRouter({
           component: () => import('@/views/EnglishTraining.vue') // 重用入口頁面顯示歷史
         }
       ]
+    },
+    {
+      path: '/formula-recognizer',
+      name: 'formula-recognizer',
+      component: FormulaRecognizer
     }
   ]
 })
