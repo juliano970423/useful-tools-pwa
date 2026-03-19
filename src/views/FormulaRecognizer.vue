@@ -56,9 +56,9 @@
             <div
               ref="latexPreviewRef"
               class="latex-preview"
-              style="flex: 1; margin-bottom: 12px;"
+              style="flex: 1; margin-bottom: 12px; min-height: 150px; display: flex; align-items: center; justify-content: center;"
             >
-              <span v-if="!result.latex" style="color: #999; font-size: 14px;">繪製公式後點擊識別</span>
+              <span v-show="!result.latex" style="color: #999; font-size: 14px;">繪製公式後點擊識別</span>
             </div>
 
             <!-- LaTeX 代碼 -->
@@ -75,7 +75,13 @@
 
             <div style="display: flex; gap: 8px; margin-top: 8px;">
               <mdui-button @click="copyLatex" variant="outlined" style="flex: 1;">複製 LaTeX</mdui-button>
-              <mdui-button @click="downloadLatexImage" variant="tonal" style="flex: 1;">下載圖片</mdui-button>
+              <mdui-dropdown ref="downloadDropdown">
+                <mdui-button variant="tonal" slot="trigger" end-icon="arrow_drop_down">下載圖片</mdui-button>
+                <mdui-menu>
+                  <mdui-menu-item value="svg">SVG 格式</mdui-menu-item>
+                  <mdui-menu-item value="png">PNG 格式</mdui-menu-item>
+                </mdui-menu>
+              </mdui-dropdown>
             </div>
 
             <div v-if="result.confidence" style="margin-top: 8px; font-size: 12px; color: #666; text-align: center;">
@@ -168,6 +174,7 @@ import NavBar from '@/components/NavBar.vue'
 import { FormulaRecognizerService, type FormulaRecognizerConfig } from '@/services/formulaRecognizer'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
+import html2canvas from 'html2canvas'
 // mdui 組件已在 main.ts 中全局導入，無需重複導入
 
 // 配置
@@ -178,6 +185,7 @@ const config = ref<FormulaRecognizerConfig>({
   requireStylus: false
 })
 const customModel = ref('')  // 用戶手動輸入的模型名稱
+const downloadDropdown = ref(null)  // 下載選單引用
 
 // Dialog 臨時配置（用於取消時恢復）
 const tempConfig = ref<FormulaRecognizerConfig>({
@@ -385,9 +393,15 @@ const undoLastStroke = () => {
 
 // 識別公式
 const recognizeFormula = async () => {
-  if (!canvasRef.value) return
+  console.log('=== 開始識別公式 ===')
+  
+  if (!canvasRef.value) {
+    console.error('canvasRef 為 null')
+    return
+  }
 
   if (!config.value.apiKey) {
+    console.log('沒有 API Key，打開配置對話框')
     showError('請先配置 API Key')
     toggleConfigPopover()
     return
@@ -395,10 +409,12 @@ const recognizeFormula = async () => {
 
   isRecognizing.value = true
   result.value.latex = ''
+  console.log('已清空 result，準備發送請求...')
 
   try {
     // 如果有手動輸入模型名稱，優先使用；否則使用下拉選單選擇的模型
     const model = customModel.value.trim() || config.value.model
+    console.log('使用的模型:', model)
 
     if (!model) {
       showError('請先選擇或輸入模型')
@@ -410,19 +426,29 @@ const recognizeFormula = async () => {
       model
     })
 
+    console.log('發送 API 請求...')
     const recognitionResult = await service.recognize(canvasRef.value)
-    result.value.latex = recognitionResult.latex
-    result.value.confidence = recognitionResult.confidence
+    console.log('API 回應:', recognitionResult)
+
+    // 強制更新 result 對象
+    result.value = {
+      latex: recognitionResult.latex,
+      confidence: recognitionResult.confidence
+    }
+    console.log('result 已更新:', result.value)
 
     // 渲染 LaTeX
     await nextTick()
+    console.log('準備渲染 LaTeX...')
     renderLatex(recognitionResult.latex)
+    console.log('=== 識別完成 ===')
   } catch (error) {
+    console.error('識別過程出錯:', error)
     let errorMsg = '識別失敗'
-    
+
     if (error instanceof Error) {
       const message = error.message.toLowerCase()
-      
+
       // 檢查常見的 API 錯誤
       if (message.includes('429')) {
         errorMsg = '請求過於頻繁（429），請稍後再試'
@@ -442,24 +468,33 @@ const recognizeFormula = async () => {
         errorMsg = error.message
       }
     }
-    
+
     showError(errorMsg)
   } finally {
     isRecognizing.value = false
+    console.log('isRecognizing = false')
   }
 }
 
 // 渲染 LaTeX
 const renderLatex = (latex: string) => {
-  if (!latexPreviewRef.value) return
+  if (!latexPreviewRef.value) {
+    console.error('latexPreviewRef 為 null')
+    return
+  }
 
   try {
+    // 先清空內容
+    latexPreviewRef.value.innerHTML = ''
+    
     katex.render(latex, latexPreviewRef.value, {
       throwOnError: false,
       displayMode: true,
       fontSize: 1.5
     })
-  } catch {
+    console.log('LaTeX 渲染成功')
+  } catch (err) {
+    console.error('KaTeX 渲染失敗:', err)
     latexPreviewRef.value.textContent = latex
   }
 }
@@ -529,39 +564,114 @@ const copyLatex = async () => {
 }
 
 // 下載 LaTeX 預覽為圖片
-const downloadLatexImage = async () => {
-  if (!latexPreviewRef.value || !result.value.latex) {
+const downloadLatexImage = async (format: 'svg' | 'png' = 'svg') => {
+  console.log('=== 開始下載 ===')
+  console.log('格式:', format)
+  console.log('result.value:', result.value)
+  
+  if (!result.value.latex) {
     showError('沒有可下載的內容')
     return
   }
 
   try {
-    // 使用 html2canvas 或簡單的方法
-    // 這裡我們創建一個 SVG 來下載
-    const svgContent = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="800" height="200">
-        <foreignObject width="100%" height="100%">
-          <div xmlns="http://www.w3.org/1999/xhtml" style="padding: 20px; background: white; font-family: 'KaTeX_Main', serif;">
-            ${result.value.latex}
-          </div>
-        </foreignObject>
-      </svg>
-    `
-    
-    const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'formula.svg'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-    
-    showError('已下載為 SVG 格式')
+    // 創建臨時容器渲染 LaTeX
+    const tempDiv = document.createElement('div')
+    tempDiv.style.display = 'inline-block'
+    tempDiv.style.padding = '20px'
+    tempDiv.style.background = 'white'
+    tempDiv.style.position = 'fixed'
+    tempDiv.style.left = '-9999px'
+    tempDiv.style.top = '0'
+    tempDiv.style.fontFamily = 'KaTeX_Main, serif'
+    document.body.appendChild(tempDiv)
+
+    // 渲染 LaTeX - 使用 MathML 輸出（更兼容）
+    katex.render(result.value.latex, tempDiv, {
+      displayMode: true,
+      throwOnError: false,
+      output: 'htmlAndMathml'  // 輸出 HTML 和 MathML
+    })
+
+    console.log('渲染完成，HTML:', tempDiv.innerHTML.substring(0, 200))
+
+    if (format === 'svg') {
+      console.log('開始 SVG 下載...')
+      // 獲取渲染後的 HTML，只提取 MathML 部分
+      const mathmlMatch = tempDiv.innerHTML.match(/<math[\s\S]*?<\/math>/)
+      const mathContent = mathmlMatch ? mathmlMatch[0] : tempDiv.innerHTML
+      
+      const rect = tempDiv.getBoundingClientRect()
+      const width = Math.max(400, rect.width + 40)
+      const height = Math.max(100, rect.height + 40)
+
+      console.log('SVG 尺寸:', width, 'x', height)
+      console.log('MathML 內容:', mathContent.substring(0, 100))
+
+      document.body.removeChild(tempDiv)
+
+      // 創建 SVG，將 MathML 內容嵌入
+      const svg = `<?xml version="1.0" encoding="UTF-8"?>
+        <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" 
+             width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+          <rect width="100%" height="100%" fill="white"/>
+          <foreignObject width="100%" height="100%">
+            <div xmlns="http://www.w3.org/1999/xhtml" style="padding: 20px; display: flex; align-items: center; justify-content: center;">
+              ${mathContent}
+            </div>
+          </foreignObject>
+        </svg>`
+      
+      console.log('SVG 內容長度:', svg.length)
+      
+      const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'formula.svg'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      
+      console.log('SVG 下載完成')
+      showError('已下載為 SVG 格式')
+    } else if (format === 'png') {
+      console.log('開始 PNG 下載，使用 html2canvas...')
+      
+      // 使用 html2canvas 將渲染後的 div 轉換為 PNG
+      const canvas = await html2canvas(tempDiv, {
+        backgroundColor: '#ffffff',
+        scale: 2,  // 2x 清晰度
+        logging: true,
+        useCORS: true,
+        ignoreElements: (element: Element) => {
+          // 忽略 Vue 相關的元素
+          return element.hasAttribute('data-v-') || element.classList.contains('v-')
+        }
+      })
+
+      console.log('Canvas 尺寸:', canvas.width, 'x', canvas.height)
+
+      document.body.removeChild(tempDiv)
+
+      // 轉換為 PNG 並下載
+      const dataUrl = canvas.toDataURL('image/png')
+      console.log('PNG dataURL 長度:', dataUrl.length)
+      
+      const link = document.createElement('a')
+      link.href = dataUrl
+      link.download = 'formula.png'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      console.log('PNG 下載完成')
+      showError('已下載為 PNG 格式')
+    }
   } catch (err) {
     console.error('下載失敗:', err)
-    showError('下載失敗')
+    showError('下載失敗：' + err.message)
   }
 }
 
@@ -656,6 +766,32 @@ const saveConfigAndClose = () => {
   saveConfig()
   closeConfig()
 }
+
+// 處理下載格式選擇
+const handleDownloadFormat = (format: 'svg' | 'png') => {
+  console.log('=== 下載事件 ===')
+  console.log('下載格式:', format)
+  
+  if (format) {
+    downloadLatexImage(format)
+  }
+}
+
+// 監聽 dropdown 選擇
+onMounted(() => {
+  // 延遲添加事件監聽
+  setTimeout(() => {
+    const menuItems = document.querySelectorAll('mdui-menu-item')
+    menuItems.forEach(item => {
+      item.addEventListener('click', (e) => {
+        const value = (item as HTMLElement).getAttribute('value') as 'svg' | 'png'
+        if (value === 'svg' || value === 'png') {
+          handleDownloadFormat(value)
+        }
+      })
+    })
+  }, 500)
+})
 
 const showError = (message: string) => {
   errorMessage.value = message

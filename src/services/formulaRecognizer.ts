@@ -143,8 +143,16 @@ export class FormulaRecognizerService {
   async recognize(image: File | HTMLCanvasElement, prompt?: string): Promise<RecognitionResult> {
     const base64Image = await this.imageToBase64(image)
 
-    const systemPrompt = 'You are a mathematical formula OCR expert. Convert handwritten math formulas to LaTeX code accurately.'
-    const userPrompt = prompt || 'Convert this mathematical formula image to LaTeX code. Output only the LaTeX code without any explanation.'
+    const systemPrompt = `You are a mathematical formula OCR expert. Your task is to convert handwritten math formulas in images to LaTeX code.
+
+IMPORTANT RULES:
+- Output ONLY the LaTeX code, nothing else
+- Do not include any explanations, introductions, or conclusions
+- Do not use markdown code blocks (no \`\`\`latex or \`\`\`)
+- Do not wrap in $ or $$ symbols
+- Just return the raw LaTeX formula`
+
+    const userPrompt = prompt || 'Convert this handwritten mathematical formula to LaTeX. Output ONLY the LaTeX code:'
 
     try {
       const response = await this.client.post('/chat/completions', {
@@ -196,26 +204,14 @@ export class FormulaRecognizerService {
    * 從回應中提取 LaTeX 代碼
    */
   private extractLatex(content: string): string {
-    // 移除 markdown 代碼塊標記
-    let latex = content.replace(/```latex\s*/g, '').replace(/```\s*/g, '')
-    
-    // 移除行內代碼標記
-    latex = latex.replace(/`([^`]+)`/g, '$1')
-    
-    // 移除開頭和結尾的空白
+    let latex = content.trim()
+
+    // 只移除 markdown 代碼塊標記
+    latex = latex.replace(/```latex\s*/g, '').replace(/```\s*/g, '')
+
+    // 移除開頭和結尾的空白和換行
     latex = latex.trim()
-    
-    // 如果包含解釋性文字，嘗試提取 LaTeX 部分
-    const inlineMathMatch = latex.match(/\$([^$]+)\$/)
-    if (inlineMathMatch) {
-      return inlineMathMatch[1]
-    }
-    
-    const displayMathMatch = latex.match(/\$\$([^$]+)\$\$/)
-    if (displayMathMatch) {
-      return displayMathMatch[1]
-    }
-    
+
     return latex
   }
 
